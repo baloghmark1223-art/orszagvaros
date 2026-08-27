@@ -151,8 +151,134 @@ document.getElementById("show-answers-btn").onclick=()=>error("A válaszok már 
 
 document.getElementById("copy-code").onclick=async()=>{try{await navigator.clipboard.writeText(code);error("A szobakód a vágólapra került.","info");}catch(e){error(`Szobakód: ${code}`,"info");}};
 
-socket.on("game_finished",data=>{currentState="finished";show("finished-view");document.getElementById("progress-bar").style.width="100%";const podium=document.getElementById("podium");podium.innerHTML="";const players=data.players||[];const order=[1,0,2],medals=["🥈","🥇","🥉"],classes=["second","first","third"];order.forEach(i=>{const p=players[i];if(!p)return;const d=document.createElement("div");d.className=`podium-card ${classes[i]}`;d.innerHTML=`<div class="podium-medal">${medals[i]}</div><span class="avatar big">${esc(p.name.charAt(0).toUpperCase())}</span><b>${esc(p.name)}</b><strong>${p.score}</strong><small>pont</small>`;podium.appendChild(d);});const list=document.getElementById("final-results");list.innerHTML="";players.forEach((p,i)=>{const d=document.createElement("div");d.className="final-row";d.innerHTML=`<span class="place">${i+1}.</span><span class="avatar">${esc(p.name.charAt(0).toUpperCase())}</span><b>${i===0?"👑 ":""}${esc(p.name)}</b><strong>${p.score} pont</strong>`;list.appendChild(d);});document.getElementById("final-subtitle").textContent=`${data.total_rounds} kör • ${players.length} játékos`;document.getElementById("stat-rounds").textContent=data.total_rounds;document.getElementById("stat-answers").textContent="—";document.getElementById("stat-best").textContent=players.length?`${players[0].score} pont`:"—";});
+socket.on("game_finished", data => {
+    currentState = "finished";
+    show("finished-view");
 
+    document.getElementById("progress-bar").style.width = "100%";
+
+    const podium = document.getElementById("podium");
+    const list = document.getElementById("final-results");
+
+    podium.innerHTML = "";
+    list.innerHTML = "";
+
+    const players = data.players || [];
+
+    // Mindig pontszám szerint csökkenő sorrend
+    const sortedPlayers = [...players].sort(
+        (a, b) => Number(b.score || 0) - Number(a.score || 0)
+    );
+
+    // =========================
+    // PÓDIUM
+    // =========================
+
+    const podiumPlayers = [
+        {
+            player: sortedPlayers[1],
+            medal: "🥈",
+            className: "second"
+        },
+        {
+            player: sortedPlayers[0],
+            medal: "🥇",
+            className: "first"
+        },
+        {
+            player: sortedPlayers[2],
+            medal: "🥉",
+            className: "third"
+        }
+    ];
+
+    podiumPlayers.forEach(item => {
+
+        if (!item.player) return;
+
+        const p = item.player;
+
+        const d = document.createElement("div");
+
+        d.className = `podium-card ${item.className}`;
+
+        d.innerHTML = `
+            <div class="podium-medal">
+                ${item.medal}
+            </div>
+
+            <span class="avatar big">
+                ${esc(p.name.charAt(0).toUpperCase())}
+            </span>
+
+            <b>
+                ${esc(p.name)}
+            </b>
+
+            <strong>
+                ${Number(p.score || 0)}
+            </strong>
+
+            <small>
+                pont
+            </small>
+        `;
+
+        podium.appendChild(d);
+    });
+
+
+    // =========================
+    // TELJES RANGLISTA
+    // =========================
+
+    sortedPlayers.forEach((p, i) => {
+
+        const d = document.createElement("div");
+
+        d.className = "final-row";
+
+        d.innerHTML = `
+            <span class="place">
+                ${i + 1}.
+            </span>
+
+            <span class="avatar">
+                ${esc(p.name.charAt(0).toUpperCase())}
+            </span>
+
+            <b>
+                ${i === 0 ? "👑 " : ""}
+                ${esc(p.name)}
+            </b>
+
+            <strong>
+                ${Number(p.score || 0)} pont
+            </strong>
+        `;
+
+        list.appendChild(d);
+    });
+
+
+    // =========================
+    // STATISZTIKÁK
+    // =========================
+
+    document.getElementById("final-subtitle").textContent =
+        `${data.total_rounds} kör • ${sortedPlayers.length} játékos`;
+
+    document.getElementById("stat-rounds").textContent =
+        data.total_rounds;
+
+    document.getElementById("stat-answers").textContent =
+        "—";
+
+    document.getElementById("stat-best").textContent =
+        sortedPlayers.length
+            ? `${Number(sortedPlayers[0].score || 0)} pont`
+            : "—";
+});
 socket.on("error_message",d=>error(d.message));
 </script>
 </body>
