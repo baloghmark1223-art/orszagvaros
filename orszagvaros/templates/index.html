@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="hu">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Országváros — Multiplayer</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="screen-home">
+<div class="bg-stars"></div>
+<main class="home-layout">
+  <section class="brand-panel glass">
+    <div class="brand-crown">♛</div>
+    <div class="brand-word">ORSZÁGVÁROS</div>
+    <div class="brand-sub">MULTIPLAYER</div>
+    <div class="mountains"></div>
+    <div class="brand-copy">A klasszikus ország-város játék<br>gyors, látványos online változata.</div>
+
+    <div class="home-features">
+      <div><b>⌛</b><span><strong>60 MP</strong><small>körönként</small></span></div>
+      <div><b>ABC</b><span><strong>NINCS ISMÉTLÉS</strong><small>minden körben új betű</small></span></div>
+      <div><b>♛</b><span><strong>HOST ÉRTÉKEL</strong><small>minden válaszról dönt</small></span></div>
+    </div>
+  </section>
+
+  <section class="create-panel glass">
+    <div class="eyebrow">✦ JÁTÉKTEREM</div>
+    <h1>Játsszatok együtt.</h1>
+    <p class="muted">Hozz létre egy szobát, vagy csatlakozz egy meglévőhöz.</p>
+
+    <div class="form-card">
+      <div class="form-title">JÁTÉK LÉTREHOZÁSA</div>
+      <div class="fake-input"><span>♙</span><span class="muted">A nevedet a lobbyban adod meg</span></div>
+      <a class="button primary glow full" href="/create">JÁTÉK LÉTREHOZÁSA <span>＋</span></a>
+    </div>
+
+    <div class="or-line"><span>VAGY</span></div>
+
+    <form class="form-card join-card" action="/join" method="get">
+      <div class="form-title">CSATLAKOZÁS JÁTÉKHOZ</div>
+      <div class="join-row">
+        <input id="code" name="code" maxlength="5" placeholder="SZOBÁKÓD" required autocomplete="off">
+        <button class="button primary" type="submit">BELÉPÉS <span>›</span></button>
+      </div>
+    </form>
+
+    <div class="version">v3.0 • KÉK-FEKETE KIADÁS</div>
+  </section>
+
+  <aside class="home-info">
+    <div class="info-chip"><span>⌛</span><div><b>60 MÁSODPERC</b><small>Ennyi időd van egy körben.</small></div></div>
+    <div class="info-chip"><span>ABC</span><div><b>NINCS BETŰISMÉTLÉS</b><small>Minden körben új betű.</small></div></div>
+    <div class="info-chip"><span>👥</span><div><b>MULTIPLAYER</b><small>Játsszatok barátokkal.</small></div></div>
+    <div class="info-chip"><span>♛</span><div><b>HOST ÉRTÉKEL</b><small>A Host igazolja a válaszokat.</small></div></div>
+  </aside>
+</main>
+</body>
+</html>

@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="hu">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lobby — Országváros</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="screen-lobby">
+<div class="bg-stars"></div>
+<main class="lobby-layout">
+  <section class="brand-panel glass lobby-brand">
+    <div class="brand-crown">♛</div>
+    <div class="brand-word">ORSZÁGVÁROS</div>
+    <div class="brand-sub">MULTIPLAYER</div>
+    <div class="mountains"></div>
+    <div class="room-badge"><span>SZOBÁKÓD</span><strong>{{ code }}</strong><button id="copy-code" title="Másolás">▣</button></div>
+    <p class="muted center">Küldd el ezt a kódot a játékostársaidnak.</p>
+  </section>
+
+  <section class="lobby-main glass">
+    <div class="eyebrow">JÁTÉK LOBBY</div>
+    <h1>Várjuk a többieket.</h1>
+    <p class="muted">Az első belépő játékos automatikusan Host lesz.</p>
+
+    <div id="join-panel" class="join-entry">
+      <label for="name">JÁTÉKOSNÉV</label>
+      <div class="input-row"><span>♙</span><input id="name" maxlength="20" placeholder="Add meg a neved" autocomplete="nickname"></div>
+      <button id="join-btn" class="button primary glow full">BELÉPÉS <span>›</span></button>
+    </div>
+
+    <div id="lobby-panel" class="hidden">
+      <div class="section-head"><h2>JÁTÉKOSOK</h2><span id="player-count-badge">0 / 10</span></div>
+      <div id="players" class="players-list"></div>
+
+      <div id="host-controls" class="host-settings hidden">
+        <div class="setting-head"><div><div class="eyebrow">HOST BEÁLLÍTÁS</div><h3>KÖRÖK SZÁMA</h3></div><div id="round-number" class="big-setting">5</div></div>
+        <input id="rounds" type="range" min="1" max="10" value="5">
+        <div class="range-labels"><span>1</span><span>5</span><span>10</span></div>
+        <button id="start-btn" class="button primary glow full">⚡ JÁTÉK INDÍTÁSA</button>
+      </div>
+      <div id="host-info" class="host-info"></div>
+    </div>
+    <div id="message"></div>
+  </section>
+
+  <aside class="lobby-side">
+    <div class="info-chip"><span>∞</span><div><b>NINCS IDŐKORLÁT</b><small>Addig tart a kör, amíg mindenki kész.</small></div></div>
+    <div class="info-chip"><span>ABC</span><div><b>ÚJ BETŰ MINDEN KÖRBEN</b><small>Ugyanaz a betű nem jön vissza.</small></div></div>
+    <div class="info-chip"><span>♛</span><div><b>HOST</b><small>A Host értékeli a válaszokat.</small></div></div>
+  </aside>
+</main>
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script>
+const socket = io({transports:["polling"]});
+const code = "{{ code }}";
+const nameInput = document.getElementById("name");
+const savedName = sessionStorage.getItem("ov_name") || "";
+if (savedName) nameInput.value = savedName;
+
+function esc(s){return String(s ?? "").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]));}
+function msg(text, type="error"){document.getElementById("message").innerHTML=`<div class="${type}">${esc(text)}</div>`;}
+
+function join(){
+  const name=nameInput.value.trim();
+  if(!name){msg("Írd be a neved.");return;}
+  socket.emit("join_game",{code,name});
+}
+document.getElementById("join-btn").onclick=join;
+nameInput.addEventListener("keydown",e=>{if(e.key==="Enter")join();});
+
+document.getElementById("copy-code").onclick=async()=>{
+  try{await navigator.clipboard.writeText(code);msg("A szobakód a vágólapra került.","info");}catch(e){msg(`Szobakód: ${code}`,"info");}
+};
+
+socket.on("joined",data=>{
+  sessionStorage.setItem("ov_name",data.name);
+  document.getElementById("join-panel").classList.add("hidden");
+  document.getElementById("lobby-panel").classList.remove("hidden");
+  if(data.state!=="lobby") window.location.href=`/game/${code}`;
+});
+
+socket.on("state",state=>{
+  renderPlayers(state);
+  if(state.state!=="lobby") window.location.href=`/game/${code}`;
+});
+
+function renderPlayers(state){
+  const list=document.getElementById("players");list.innerHTML="";
+  state.players.forEach((p,i)=>{
+    const row=document.createElement("div");row.className="player-row";
+    row.innerHTML=`<span class="player-rank">${i+1}</span><span class="avatar">${esc(p.name.charAt(0).toUpperCase())}</span><span class="player-name">${esc(p.name)}</span><span class="player-role">${p.is_host?"♛ HOST":"JÁTÉKOS"}</span>`;
+    list.appendChild(row);
+  });
+  document.getElementById("player-count-badge").textContent=`${state.players.length} / 10`;
+  const me=sessionStorage.getItem("ov_name");
+  const host=state.players.find(p=>p.is_host);
+  const amHost=!!host && host.name===me;
+  document.getElementById("host-controls").classList.toggle("hidden",!amHost);
+  document.getElementById("host-info").textContent=amHost?"♛ Te vagy a Host.":(host?`Host: ${host.name}`:"");
+  const range=document.getElementById("rounds");
+  range.value=state.total_rounds;
+  document.getElementById("round-number").textContent=state.total_rounds;
+}
+
+document.getElementById("rounds").oninput=e=>{document.getElementById("round-number").textContent=e.target.value;};
+document.getElementById("rounds").onchange=e=>socket.emit("set_rounds",{code,rounds:Number(e.target.value)});
+document.getElementById("start-btn").onclick=()=>socket.emit("start_game",{code});
+socket.on("host_changed",data=>msg(data.message,"info"));
+socket.on("error_message",data=>msg(data.message));
+</script>
+</body>
+</html>
