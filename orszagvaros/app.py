@@ -101,13 +101,24 @@ def review_players(game):
 
 
 def final_results(game):
-    return sorted(
+    results = sorted(
         [
             {"sid": sid, "name": player["name"], "score": player["score"]}
             for sid, player in game["players"].items()
         ],
         key=lambda item: (-item["score"], item["name"].lower()),
     )
+
+    # Azonos pontszám = azonos helyezés (versenyhelyezés: 1, 1, 3).
+    last_score = None
+    last_rank = 0
+    for index, item in enumerate(results, start=1):
+        if item["score"] != last_score:
+            last_rank = index
+            last_score = item["score"]
+        item["rank"] = last_rank
+
+    return results
 
 
 def emit_review_to_room(code):

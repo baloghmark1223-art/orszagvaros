@@ -152,7 +152,54 @@ document.getElementById("show-answers-btn").onclick=()=>error("A válaszok már 
 
 document.getElementById("copy-code").onclick=async()=>{try{await navigator.clipboard.writeText(code);error("A szobakód a vágólapra került.","info");}catch(e){error(`Szobakód: ${code}`,"info");}};
 
-socket.on("game_finished",data=>{currentState="finished";show("finished-view");document.getElementById("progress-bar").style.width="100%";const podium=document.getElementById("podium");podium.innerHTML="";const players=data.players||[];const order=[1,0,2],medals=["🥈","🥇","🥉"],classes=["second","first","third"];order.forEach(i=>{const p=players[i];if(!p)return;const d=document.createElement("div");d.className=`podium-card ${classes[i]}`;d.innerHTML=`<div class="podium-medal">${medals[i]}</div><span class="avatar big">${esc(p.name.charAt(0).toUpperCase())}</span><b>${esc(p.name)}</b><strong>${p.score}</strong><small>pont</small>`;podium.appendChild(d);});const list=document.getElementById("final-results");list.innerHTML="";players.forEach((p,i)=>{const d=document.createElement("div");d.className="final-row";d.innerHTML=`<span class="place">${i+1}.</span><span class="avatar">${esc(p.name.charAt(0).toUpperCase())}</span><b>${i===0?"👑 ":""}${esc(p.name)}</b><strong>${p.score} pont</strong>`;list.appendChild(d);});document.getElementById("final-subtitle").textContent=`${data.total_rounds} kör • ${players.length} játékos`;document.getElementById("stat-rounds").textContent=data.total_rounds;document.getElementById("stat-answers").textContent="—";document.getElementById("stat-best").textContent=players.length?`${players[0].score} pont`:"—";});
+socket.on("game_finished",data=>{
+  currentState="finished";
+  show("finished-view");
+  document.getElementById("progress-bar").style.width="100%";
+
+  const podium=document.getElementById("podium");
+  podium.innerHTML="";
+  const players=data.players||[];
+
+  // A szerver már kiszámolja a helyezést. Azonos pontszám = azonos helyezés.
+  // A pódium valóban 1./2./3. hely szerint jelenik meg, nem a tömbindex alapján.
+  const podiumGroups=[];
+  const seenRanks=new Set();
+  players.forEach(p=>{
+    const rank=Number(p.rank)||0;
+    if(rank>=1 && rank<=3 && !seenRanks.has(rank)){
+      seenRanks.add(rank);
+      podiumGroups.push({rank, players:players.filter(x=>(Number(x.rank)||0)===rank)});
+    }
+  });
+
+  const medalByRank={1:"🥇",2:"🥈",3:"🥉"};
+  const classByRank={1:"first",2:"second",3:"third"};
+  podiumGroups.sort((a,b)=>a.rank-b.rank);
+  podiumGroups.forEach(group=>{
+    group.players.forEach(p=>{
+      const d=document.createElement("div");
+      d.className=`podium-card ${classByRank[group.rank]||""}`;
+      d.innerHTML=`<div class="podium-medal">${medalByRank[group.rank]||"🏅"}</div><span class="avatar big">${esc(p.name.charAt(0).toUpperCase())}</span><b>${esc(p.name)}</b><strong>${p.score}</strong><small>${group.rank}. hely • pont</small>`;
+      podium.appendChild(d);
+    });
+  });
+
+  const list=document.getElementById("final-results");
+  list.innerHTML="";
+  players.forEach((p)=>{
+    const rank=Number(p.rank)||0;
+    const d=document.createElement("div");
+    d.className="final-row";
+    d.innerHTML=`<span class="place">${rank}.</span><span class="avatar">${esc(p.name.charAt(0).toUpperCase())}</span><b>${rank===1?"👑 ":""}${esc(p.name)}</b><strong>${p.score} pont</strong>`;
+    list.appendChild(d);
+  });
+
+  document.getElementById("final-subtitle").textContent=`${data.total_rounds} kör • ${players.length} játékos`;
+  document.getElementById("stat-rounds").textContent=data.total_rounds;
+  document.getElementById("stat-answers").textContent="—";
+  document.getElementById("stat-best").textContent=players.length?`${players[0].score} pont`:"—";
+});
 
 socket.on("error_message",d=>error(d.message));
 </script>
