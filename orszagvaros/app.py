@@ -3,6 +3,7 @@ from flask_socketio import SocketIO, emit, join_room
 import random
 import string
 import uuid
+import re
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = "orszagvaros-v3-secret"
