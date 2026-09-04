@@ -2,24 +2,30 @@ from flask import Flask, render_template, request, redirect, url_for, session
 from flask_socketio import SocketIO, emit, join_room
 import random
 import string
-import time
+import uuid
 
 app = Flask(__name__)
-app.config["SECRET_KEY"] = "orszagvaros-v2-secret"
+app.config["SECRET_KEY"] = "orszagvaros-v3-secret"
+
+# Pollinget használunk alapból: Windows alatt így nem függünk a websocket
+# extra környezetétől, és ugyanúgy valós idejű marad a játék.
 socketio = SocketIO(app, async_mode="threading", cors_allowed_origins="*")
 
-BASE_CATEGORIES = [
-    ("country", "Ország"),
-    ("city", "Város"),
-    ("boy", "Fiú"),
-    ("girl", "Lány"),
-    ("plant", "Növény"),
-    ("animal", "Állat"),
-    ("object", "Tárgy"),
+CATEGORIES = [
+    ("country", "Ország", "🌍"),
+    ("city", "Város", "🏙️"),
+    ("boy", "Fiú", "👦"),
+    ("girl", "Lány", "👧"),
+    ("plant", "Növény", "🌿"),
+    ("animal", "Állat", "🐾"),
+    ("object", "Tárgy", "◈"),
 ]
 
-# A magyar ábécé használható betűi, amelyekkel érdemes játszani.
+# Biztonságosan választható, egyszerű latin betűk.
 LETTERS = list("ABCDEFGHIJKLMNOPRSTUVZ")
+
+
+games = {}
 
 
 def new_code():
@@ -29,40 +35,35 @@ def new_code():
             return code
 
 
-def all_categories(game):
-    return BASE_CATEGORIES + game.get("custom_categories", [])
-
-
 def new_game():
     return {
         "host": None,
-        "players": {},          # sid -> player
-        "state": "lobby",       # lobby / playing / review / finished
+        "players": {},              # sid -> {name, score}
+        "state": "lobby",          # lobby / playing / review / finished
         "round": 0,
         "total_rounds": 5,
         "letter": None,
         "used_letters": [],
         "deadline": None,
         "ready": set(),
-        "answers": {},          # sid -> answers
-        "accepted": {},         # sid -> category -> bool
-        "round_points": {},     # sid -> points in current round
-        "custom_categories": [], # [(key, label)]
+        "answers": {},              # sid -> {category: answer}
+        "accepted": {},             # sid -> {category: bool}
+        "round_points": {},         # sid -> current round points
+        "round_base_scores": {},    # sid -> score before current round review
+        "categories": list(CATEGORIES),  # 7 alap + Host által hozzáadott kategóriák
+        "duplicate_categories": {},
     }
 
 
-games = {}
-
-
-def game_state(game):
+def public_state(game):
     return {
         "state": game["state"],
         "round": game["round"],
         "total_rounds": game["total_rounds"],
         "letter": game["letter"],
-        "used_letters": game["used_letters"],
-        "deadline": game["deadline"],
-        "categories": all_categories(game),
+        "used_letters": list(game["used_letters"]),
+        "deadline": None,
+        "categories": game["categories"],
         "players": [
             {
                 "sid": sid,
@@ -77,65 +78,82 @@ def game_state(game):
 
 
 def broadcast(code):
-    if code in games:
-        socketio.emit("state", game_state(games[code]), room=code)
+    game = games.get(code)
+    if game:
+        socketio.emit("state", public_state(game), room=code)
 
 
-def build_review(game):
-    return [
-        {
+def review_players(game):
+    result = []
+    for sid, player in game["players"].items():
+        result.append({
             "sid": sid,
             "name": player["name"],
             "answers": game["answers"].get(sid, {}),
             "accepted": game["accepted"].get(sid, {}),
             "score": player["score"],
             "round_points": game["round_points"].get(sid, 0),
-        }
-        for sid, player in game["players"].items()
-    ]
+            "duplicates": list(game.get("duplicate_categories", {}).get(sid, set())),
+            "is_host": sid == game["host"],
+        })
+    return result
+
+
+def final_results(game):
+    return sorted(
+        [
+            {"sid": sid, "name": player["name"], "score": player["score"]}
+            for sid, player in game["players"].items()
+        ],
+        key=lambda item: (-item["score"], item["name"].lower()),
+    )
+
+
+def emit_review_to_room(code):
+    game = games[code]
+    players = review_players(game)
+    for sid in game["players"]:
+        emit("round_review", {
+            "round": game["round"],
+            "total_rounds": game["total_rounds"],
+            "letter": game["letter"],
+            "categories": game["categories"],
+            "players": players,
+            "is_host": sid == game["host"],
+        }, to=sid)
 
 
 def send_current_view(sid, code):
-    """A már folyamatban lévő játék állapotát elküldi egy újracsatlakozó kliensnek."""
     game = games[code]
-
-    emit("state", game_state(game), to=sid)
+    emit("state", public_state(game), to=sid)
 
     if game["state"] == "playing":
-        remaining = 0
-        if game["deadline"]:
-            remaining = max(0, int(game["deadline"] - time.time()))
-
         emit("round_started", {
             "round": game["round"],
             "total_rounds": game["total_rounds"],
             "letter": game["letter"],
-            "duration": remaining,
-            "categories": all_categories(game),
+            "used_letters": list(game["used_letters"]),
+            "duration": 0,
+            "categories": game["categories"],
         }, to=sid)
-
         if sid in game["ready"]:
             emit("answers_submitted", {}, to=sid)
 
     elif game["state"] == "review":
         emit("round_review", {
             "round": game["round"],
+            "total_rounds": game["total_rounds"],
             "letter": game["letter"],
-            "categories": all_categories(game),
-            "players": build_review(game),
+            "categories": game["categories"],
+            "players": review_players(game),
             "is_host": sid == game["host"],
         }, to=sid)
 
     elif game["state"] == "finished":
-        results = sorted(
-            [
-                {"sid": psid, "name": p["name"], "score": p["score"]}
-                for psid, p in game["players"].items()
-            ],
-            key=lambda x: x["score"],
-            reverse=True,
-        )
-        emit("game_finished", {"players": results, "total_rounds": game["total_rounds"]}, to=sid)
+        emit("game_finished", {
+            "players": final_results(game),
+            "total_rounds": game["total_rounds"],
+        }, to=sid)
 
 
 def choose_new_letter(game):
@@ -148,7 +166,13 @@ def choose_new_letter(game):
 
 
 def start_round(code):
-    game = games[code]
+    game = games.get(code)
+    if not game:
+        return
+
+    if game["round"] >= game["total_rounds"]:
+        finish_game(code)
+        return
 
     letter = choose_new_letter(game)
     if letter is None:
@@ -162,40 +186,43 @@ def start_round(code):
     game["ready"] = set()
     game["answers"] = {}
     game["accepted"] = {}
+    game["duplicate_categories"] = {}
     game["round_points"] = {}
+    game["round_base_scores"] = {
+        sid: player["score"] for sid, player in game["players"].items()
+    }
 
     socketio.emit("round_started", {
         "round": game["round"],
         "total_rounds": game["total_rounds"],
         "letter": game["letter"],
-        "used_letters": game["used_letters"],
+        "used_letters": list(game["used_letters"]),
         "duration": 0,
-        "categories": all_categories(game),
+        "categories": game["categories"],
     }, room=code)
 
     broadcast(code)
-    socketio.start_background_task(round_timer, code, game["round"])
+def normalize_answer(value):
+    """Összehasonlításhoz egységesíti a válaszokat: kis/nagybetű és fölösleges szóköz nem számít."""
+    return re.sub(r"\s+", " ", str(value or "").strip()).casefold()
 
 
-def round_timer(code, round_number):
-    while True:
-        socketio.sleep(0.2)
+def mark_duplicate_answers(game):
+    """Kategóriánként automatikusan hibásra jelöli az egyező válaszokat."""
+    game["duplicate_categories"] = {sid: set() for sid in game["players"]}
+    for key, _label, _icon in game["categories"]:
+        groups = {}
+        for sid in game["players"]:
+            answer = game["answers"].get(sid, {}).get(key, "")
+            normalized = normalize_answer(answer)
+            if normalized:
+                groups.setdefault(normalized, []).append(sid)
 
-        game = games.get(code)
-        if not game:
-            return
-
-        if game["state"] != "playing" or game["round"] != round_number:
-            return
-
-        everyone_ready = (
-            len(game["players"]) > 0
-            and game["ready"] == set(game["players"].keys())
-        )
-
-        if everyone_ready:
-            finish_round(code)
-            return
+        for player_sids in groups.values():
+            if len(player_sids) > 1:
+                for sid in player_sids:
+                    game["accepted"].setdefault(sid, {})[key] = False
+                    game["duplicate_categories"].setdefault(sid, set()).add(key)
 
 
 def finish_round(code):
@@ -206,21 +233,15 @@ def finish_round(code):
     game["state"] = "review"
     game["deadline"] = None
 
-    # Minden üresen maradt játékoshoz is létrehozunk válaszszótárat.
     for sid in game["players"]:
         game["answers"].setdefault(sid, {})
         game["accepted"].setdefault(sid, {})
         game["round_points"].setdefault(sid, 0)
 
-    socketio.emit("round_review", {
-        "round": game["round"],
-        "total_rounds": game["total_rounds"],
-        "letter": game["letter"],
-        "categories": all_categories(game),
-        "players": build_review(game),
-        "is_host": True if game["host"] else False,
-    }, room=code)
+    # Az azonos válaszok automatikusan helytelenek, de a Host később felülbírálhatja.
+    mark_duplicate_answers(game)
 
+    emit_review_to_room(code)
     broadcast(code)
 
 
@@ -231,17 +252,10 @@ def finish_game(code):
 
     game["state"] = "finished"
     game["deadline"] = None
-
-    results = sorted(
-        [
-            {"sid": sid, "name": p["name"], "score": p["score"]}
-            for sid, p in game["players"].items()
-        ],
-        key=lambda x: x["score"],
-        reverse=True,
-    )
-
-    socketio.emit("game_finished", {"players": results, "total_rounds": game["total_rounds"]}, room=code)
+    socketio.emit("game_finished", {
+        "players": final_results(game),
+        "total_rounds": game["total_rounds"],
+    }, room=code)
     broadcast(code)
 
 
@@ -287,25 +301,23 @@ def on_join(data):
     if code not in games:
         emit("error_message", {"message": "Nincs ilyen szoba."})
         return
-
     if not name:
         emit("error_message", {"message": "Adj meg egy játékosnevet."})
         return
-
     if len(name) > 20:
         emit("error_message", {"message": "A név legfeljebb 20 karakter lehet."})
         return
 
     game = games[code]
 
-    # Már bent lévő játékos újracsatlakozása / lobby -> game navigáció.
-    existing_sid = None
-    for psid, player in game["players"].items():
-        if player["name"].lower() == name.lower():
-            existing_sid = psid
-            break
+    # Reconnect ugyanazzal a névvel.
+    existing_sid = next(
+        (psid for psid, player in game["players"].items()
+         if player["name"].lower() == name.lower()),
+        None,
+    )
 
-    if existing_sid is not None:
+    if existing_sid is not None and existing_sid != request.sid:
         player = game["players"].pop(existing_sid)
         game["players"][request.sid] = player
 
@@ -314,49 +326,40 @@ def on_join(data):
 
         if existing_sid in game["ready"]:
             game["ready"].remove(existing_sid)
-            if game["state"] == "playing":
-                game["ready"].add(request.sid)
+            game["ready"].add(request.sid)
 
-        if existing_sid in game["answers"]:
-            game["answers"][request.sid] = game["answers"].pop(existing_sid)
-
-        if existing_sid in game["accepted"]:
-            game["accepted"][request.sid] = game["accepted"].pop(existing_sid)
-
-        if existing_sid in game["round_points"]:
-            game["round_points"][request.sid] = game["round_points"].pop(existing_sid)
+        for store_name in ("answers", "accepted", "round_points", "round_base_scores", "duplicate_categories"):
+            store = game[store_name]
+            if existing_sid in store:
+                store[request.sid] = store.pop(existing_sid)
 
         join_room(code)
         session["code"] = code
         session["name"] = player["name"]
-
         emit("joined", {
             "code": code,
             "name": player["name"],
             "is_host": request.sid == game["host"],
             "state": game["state"],
         })
-
         send_current_view(request.sid, code)
         broadcast(code)
         return
 
-    # Új játékos csak lobbyban csatlakozhat.
     if game["state"] != "lobby":
-        emit("error_message", {
-            "message": "A játék már elkezdődött. Csak a már korábban csatlakozott játékos léphet vissza."
-        })
+        # Ha ugyanaz a SID már bent van, csak küldjük vissza az aktuális nézetet.
+        if request.sid in game["players"]:
+            join_room(code)
+            send_current_view(request.sid, code)
+            return
+        emit("error_message", {"message": "A játék már elkezdődött."})
         return
 
     if any(p["name"].lower() == name.lower() for p in game["players"].values()):
         emit("error_message", {"message": "Ez a név már foglalt."})
         return
 
-    game["players"][request.sid] = {
-        "name": name,
-        "score": 0,
-    }
-
+    game["players"][request.sid] = {"name": name, "score": 0}
     if game["host"] is None:
         game["host"] = request.sid
 
@@ -370,7 +373,43 @@ def on_join(data):
         "is_host": request.sid == game["host"],
         "state": game["state"],
     })
+    broadcast(code)
 
+
+@socketio.on("set_categories")
+def on_set_categories(data):
+    """A Host beállítja a 7 alap kategória mellé a saját kategóriákat."""
+    code = str(data.get("code", "")).strip().upper()
+    game = games.get(code)
+    if not game:
+        emit("error_message", {"message": "Nincs ilyen szoba."})
+        return
+    if request.sid != game["host"]:
+        emit("error_message", {"message": "Csak a Host módosíthatja a kategóriákat."})
+        return
+    if game["state"] != "lobby":
+        emit("error_message", {"message": "A kategóriák csak indulás előtt módosíthatók."})
+        return
+
+    raw_categories = data.get("categories", [])
+    if not isinstance(raw_categories, list):
+        emit("error_message", {"message": "Érvénytelen kategórialista."})
+        return
+
+    custom = []
+    seen = {label.casefold() for _key, label, _icon in CATEGORIES}
+    for item in raw_categories:
+        name = str(item or "").strip()
+        if not name:
+            continue
+        name = re.sub(r"\s+", " ", name)[:40]
+        normalized = name.casefold()
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        custom.append((f"custom_{uuid.uuid4().hex[:10]}", name, "✦"))
+
+    game["categories"] = list(CATEGORIES) + custom
     broadcast(code)
 
 
@@ -385,8 +424,9 @@ def on_set_rounds(data):
         emit("error_message", {"message": "Csak a Host állíthatja a körök számát."})
         return
     if game["state"] != "lobby":
-        emit("error_message", {"message": "A körök száma csak a játék indítása előtt módosítható."})
+        emit("error_message", {"message": "A körök száma csak indulás előtt módosítható."})
         return
+
     try:
         rounds = int(data.get("rounds", 5))
     except (TypeError, ValueError):
@@ -395,256 +435,163 @@ def on_set_rounds(data):
     broadcast(code)
 
 
-@socketio.on("set_custom_categories")
-def on_set_custom_categories(data):
-    code = str(data.get("code", "")).strip().upper()
-    game = games.get(code)
-
-    if not game:
-        emit("error_message", {"message": "Nincs ilyen szoba."})
-        return
-
-    if request.sid != game["host"]:
-        emit("error_message", {"message": "Csak a Host állíthatja az egyedi kategóriákat."})
-        return
-
-    if game["state"] != "lobby":
-        emit("error_message", {"message": "Az egyedi kategóriák csak a játék indítása előtt módosíthatók."})
-        return
-
-    raw_categories = data.get("categories", [])
-    if not isinstance(raw_categories, list):
-        raw_categories = []
-
-    custom = []
-    used_keys = {key for key, _label in BASE_CATEGORIES}
-    used_labels = {label.casefold() for _key, label in BASE_CATEGORIES}
-
-    for raw in raw_categories:
-        label = str(raw).strip()
-        if not label:
-            continue
-        label = label[:50]
-        if label.casefold() in used_labels:
-            continue
-
-        # Stabil, kliensbarát kulcs az egyedi kategóriához.
-        base = "custom_" + "".join(ch.lower() if ch.isalnum() else "_" for ch in label)
-        base = base.strip("_") or "custom"
-        key = base
-        n = 2
-        while key in used_keys:
-            key = f"{base}_{n}"
-            n += 1
-
-        custom.append((key, label))
-        used_keys.add(key)
-        used_labels.add(label.casefold())
-
-    game["custom_categories"] = custom
-    broadcast(code)
-    socketio.emit("categories_updated", {"categories": all_categories(game)}, room=code)
-
-
 @socketio.on("start_game")
 def on_start_game(data):
     code = str(data.get("code", "")).strip().upper()
     game = games.get(code)
-
     if not game:
-        emit("error_message", {
-            "message": "Nincs ilyen szoba."
-        })
+        emit("error_message", {"message": "Nincs ilyen szoba."})
         return
-
     if request.sid != game["host"]:
-        emit("error_message", {
-            "message": "Csak a Host indíthatja a játékot."
-        })
+        emit("error_message", {"message": "Csak a Host indíthatja a játékot."})
         return
-
     if game["state"] != "lobby":
-        emit("error_message", {
-            "message": "A játék már elindult."
-        })
+        emit("error_message", {"message": "A játék már elindult."})
         return
-
     if not game["players"]:
-        emit("error_message", {
-            "message": "Nincs játékos."
-        })
+        emit("error_message", {"message": "Nincs játékos."})
         return
 
-    # -----------------------------
-    # KÖRÖK SZÁMÁNAK BEÁLLÍTÁSA
-    # -----------------------------
-
-    try:
-        total_rounds = int(game.get("total_rounds", 5))
-    except (TypeError, ValueError):
-        total_rounds = 5
-
-    total_rounds = max(1, min(10, total_rounds))
-
-    game["total_rounds"] = total_rounds
+    game["total_rounds"] = max(1, min(10, int(game.get("total_rounds", 5))))
     game["round"] = 0
-
-    # Játék indítása
+    game["used_letters"] = []
     start_round(code)
+
 
 @socketio.on("submit_answers")
 def on_submit_answers(data):
     code = str(data.get("code", "")).strip().upper()
     game = games.get(code)
-
-    if not game or game["state"] != "playing":
-        return
-
     sid = request.sid
-    if sid not in game["players"]:
-        return
 
+    if not game or game["state"] != "playing" or sid not in game["players"]:
+        return
     if sid in game["ready"]:
         return
-
-    answers = data.get("answers", {}) or {}
+    raw = data.get("answers", {}) or {}
     clean = {}
-
-    for key, _label in all_categories(game):
-        clean[key] = str(answers.get(key, "")).strip()[:100]
+    for key, _label, _icon in game["categories"]:
+        clean[key] = str(raw.get(key, "")).strip()[:100]
 
     game["answers"][sid] = clean
     game["ready"].add(sid)
-
-    emit("answers_submitted", {})
+    emit("answers_submitted", {}, to=sid)
     broadcast(code)
 
     if game["ready"] == set(game["players"].keys()):
         finish_round(code)
 
 
-@socketio.on("accept_answer")
-def on_accept_answer(data):
+@socketio.on("set_answer_validity")
+def on_set_answer_validity(data):
+    """A Host egy konkrét választ helyesnek vagy hibásnak jelöl."""
     code = str(data.get("code", "")).strip().upper()
-    player_sid = data.get("player_sid")
-    category = data.get("category")
-    accepted = bool(data.get("accepted"))
+    player_sid = str(data.get("player_sid", ""))
+    category = str(data.get("category", ""))
+    raw_accepted = data.get("accepted")
+    if isinstance(raw_accepted, bool):
+        accepted = raw_accepted
+    elif isinstance(raw_accepted, (int, float)):
+        accepted = raw_accepted == 1
+    elif isinstance(raw_accepted, str):
+        accepted = raw_accepted.strip().lower() in {"true", "1", "yes", "helyes", "accepted"}
+    else:
+        accepted = False
 
     game = games.get(code)
-
     if not game or game["state"] != "review":
         return
-
     if request.sid != game["host"]:
         emit("error_message", {"message": "Csak a Host értékelhet."})
         return
-
     if player_sid not in game["players"]:
         return
-
-    if category not in {key for key, _ in all_categories(game)}:
+    valid_categories = {key for key, _label, _icon in game["categories"]}
+    if category not in valid_categories:
         return
 
-    game["accepted"].setdefault(player_sid, {})
+    answer = str(game["answers"].get(player_sid, {}).get(category, "") or "").strip()
+    if not answer:
+        accepted = False
 
-    old = game["accepted"][player_sid].get(category)
-    game["accepted"][player_sid][category] = accepted
+    accepted_for_player = game["accepted"].setdefault(player_sid, {})
+    accepted_for_player[category] = accepted
 
-    # Újraszámoljuk az aktuális kör pontját.
-    round_score = sum(
-        1 for value in game["accepted"][player_sid].values()
-        if value is True
-    )
+    # A kör pontszáma mindig újraszámolódik az összes kategória alapján.
+    round_score = sum(1 for value in accepted_for_player.values() if value is True)
     game["round_points"][player_sid] = round_score
 
-    # Az összpont = korábbi pontok + aktuális kör pontjai.
-    # Ehhez a player "score" mezőjéből kivonjuk a korábbi aktuális kör pontot.
-    previous_round_score = game["round_points"].get(
-        player_sid + "__previous", 0
-    )
-    # A fenti technika helyett biztonságosan kiszámoljuk a kör előtt elmentett
-    # alapot: ezt az első értékelésnél rögzítjük.
-    if "__base" not in game["round_points"]:
-        game["round_points"]["__base"] = {}
-
-    if player_sid not in game["round_points"]["__base"]:
-        game["round_points"]["__base"][player_sid] = game["players"][player_sid]["score"]
-
-    base = game["round_points"]["__base"][player_sid]
+    # A teljes pontszám = kör előtti pont + aktuális kör pontjai.
+    base = game["round_base_scores"].get(player_sid, 0)
     game["players"][player_sid]["score"] = base + round_score
 
-    socketio.emit("evaluation_update", {
+    payload = {
         "player_sid": player_sid,
         "category": category,
         "accepted": accepted,
         "score": game["players"][player_sid]["score"],
         "round_points": round_score,
-    }, room=code)
+    }
 
-    # A teljes review táblát is frissítjük, hogy újracsatlakozásnál se vesszen el.
-    socketio.emit("review_refresh", {
-        "players": build_review(game),
-    }, room=code)
+    socketio.emit("evaluation_update", payload, room=code)
+    socketio.emit("review_refresh", {"players": review_players(game)}, room=code)
+    broadcast(code)
+
+
+# Visszafelé kompatibilis alias, ha egy régebbi kliens még ezt az eseményt küldi.
+@socketio.on("accept_answer")
+def on_accept_answer(data):
+    return on_set_answer_validity(data)
 
 
 @socketio.on("next_round")
 def on_next_round(data):
     code = str(data.get("code", "")).strip().upper()
     game = games.get(code)
-
     if not game:
         return
-
     if request.sid != game["host"]:
         emit("error_message", {"message": "Csak a Host indíthatja a következő kört."})
         return
-
     if game["state"] != "review":
         return
 
     if game["round"] >= game["total_rounds"]:
         finish_game(code)
-        return
-
-    # Az aktuális kör pontjai már beépültek a score-ba.
-    start_round(code)
+    else:
+        start_round(code)
 
 
 @socketio.on("disconnect")
 def on_disconnect():
-    # Nem töröljük azonnal a játékost. Ez fontos a rövid hálózati megszakadás
-    # és az oldalváltás miatt. A játékos a neve alapján vissza tud csatlakozni.
-    # Lobbyban viszont, ha mindenki kilépett, a szoba törölhető.
+    # Lobbyban a kilépő játékos eltűnik; futó játékban megőrizzük, hogy vissza tudjon lépni.
     for code, game in list(games.items()):
-        if request.sid in game["players"]:
-            if game["state"] == "lobby":
-                was_host = request.sid == game["host"]
-                del game["players"][request.sid]
+        if request.sid not in game["players"]:
+            continue
 
-                if was_host:
-                    if game["players"]:
-                        game["host"] = next(iter(game["players"]))
-                        socketio.emit(
-                            "host_changed",
-                            {"message": "A Host kilépett, új Host lett kijelölve."},
-                            room=code,
-                        )
-                    else:
-                        del games[code]
-                        continue
-
-                broadcast(code)
-
-            # Játék közben a játékos állapotát megtartjuk, hogy vissza tudjon lépni.
-            return
+        if game["state"] == "lobby":
+            was_host = request.sid == game["host"]
+            del game["players"][request.sid]
+            if was_host:
+                if game["players"]:
+                    game["host"] = next(iter(game["players"]))
+                    socketio.emit("host_changed", {
+                        "message": "A Host kilépett, új Host lett kijelölve."
+                    }, room=code)
+                else:
+                    del games[code]
+                    continue
+            broadcast(code)
+        return
 
 
 if __name__ == "__main__":
     print("======================================")
-    print("      ORSZÁGVÁROS - MULTIPLAYER")
+    print("       ORSZÁGVÁROS - MULTIPLAYER")
     print("======================================")
     print("Helyi gépen: http://localhost:5000")
     print("Hálózaton:   http://SAJAT-IP-CIM:5000")
+    print("Köridő:      nincs időkorlát")
     print("======================================")
     socketio.run(
         app,

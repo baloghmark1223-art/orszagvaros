@@ -3,212 +3,172 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Lobby – Országváros</title>
+<title>Lobby — Országváros</title>
 <link rel="stylesheet" href="/static/style.css">
 </head>
-<body>
-<main class="container">
-<section class="card">
-<div class="home-hero"><div class="small">JÁTÉK LOBBY</div><h1 style="font-size:34px">Váróterem</h1><p class="subtitle">Hívd meg a többieket a szobakóddal.</p></div>
-<div class="room-code">SZOBÁKÓD<strong>{{ code }}</strong></div>
+<body class="screen-lobby">
+<div class="bg-stars"></div>
+<main class="lobby-layout">
+  <section class="brand-panel glass lobby-brand">
+    <div class="brand-crown">♛</div>
+    <div class="brand-word">ORSZÁGVÁROS</div>
+    <div class="brand-sub">MULTIPLAYER</div>
+    <div class="mountains"></div>
+    <div class="room-badge"><span>SZOBÁKÓD</span><strong>{{ code }}</strong><button id="copy-code" title="Másolás">▣</button></div>
+    <p class="muted center">Küldd el ezt a kódot a játékostársaidnak.</p>
+  </section>
 
-<div id="join-panel">
-<label for="name">Játékosnév</label>
-<input id="name" maxlength="20" placeholder="Írd be a neved">
-<button id="join-btn" class="button primary full">Belépés</button>
-</div>
+  <section class="lobby-main glass">
+    <div class="eyebrow">JÁTÉK LOBBY</div>
+    <h1>Várjuk a többieket.</h1>
+    <p class="muted">Az első belépő játékos automatikusan Host lesz.</p>
 
-<div id="lobby-panel" class="hidden">
-<h2>👥 Játékosok</h2>
-<div id="players"></div>
+    <div id="join-panel" class="join-entry">
+      <label for="name">JÁTÉKOSNÉV</label>
+      <div class="input-row"><span>♙</span><input id="name" maxlength="20" placeholder="Add meg a neved" autocomplete="nickname"></div>
+      <button id="join-btn" class="button primary glow full">BELÉPÉS <span>›</span></button>
+    </div>
 
-<div id="host-controls" class="hidden">
-<div class="settings-box custom-category-box">
-<label>Egyedi kategóriák</label>
-<p class="muted">A 7 alap kategória mindig benne marad. Adj hozzá annyi saját kategóriát, amennyit szeretnél.</p>
-<div class="custom-category-add">
-<input id="custom-category-input" maxlength="50" placeholder="pl. Film, Étel, Autómárka...">
-<button id="add-category-btn" class="button secondary" type="button">＋ Hozzáadás</button>
-</div>
-<div id="custom-category-list" class="custom-category-list"></div>
-</div>
+    <div id="lobby-panel" class="hidden">
+      <div class="section-head"><h2>JÁTÉKOSOK</h2><span id="player-count-badge">0 / 10</span></div>
+      <div id="players" class="players-list"></div>
 
-<div class="settings-box">
-<label for="rounds">Körök száma</label>
-<select id="rounds">
-<option value="1">1 kör</option><option value="2">2 kör</option><option value="3">3 kör</option>
-<option value="4">4 kör</option><option value="5" selected>5 kör</option><option value="6">6 kör</option>
-<option value="7">7 kör</option><option value="8">8 kör</option><option value="9">9 kör</option><option value="10">10 kör</option>
-</select>
-<p class="muted">Egy meccsen belül ugyanaz a betű nem kerül elő újra.</p>
-</div>
-<button id="start-btn" class="button primary full">⚡ Játék indítása</button>
-</div>
-<div id="round-info" class="info hidden"></div>
+      <div id="host-controls" class="host-settings hidden">
+        <div class="setting-head"><div><div class="eyebrow">HOST BEÁLLÍTÁS</div><h3>KÖRÖK SZÁMA</h3></div><div id="round-number" class="big-setting">5</div></div>
+        <input id="rounds" type="range" min="1" max="10" value="5">
+        <div class="range-labels"><span>1</span><span>5</span><span>10</span></div>
 
-<p id="host-info" class="muted"></p>
-</div>
+        <div class="custom-category-box">
+          <div class="setting-head category-head">
+            <div><div class="eyebrow">SAJÁT KATEGÓRIÁK</div><h3>+ EXTRA KATEGÓRIÁK</h3></div>
+            <div class="category-count" id="category-count">7</div>
+          </div>
+          <p class="muted category-help">A 7 alap kategória mindig megmarad. Adj hozzá annyi saját kategóriát, amennyit szeretnél.</p>
+          <div class="custom-category-add">
+            <input id="custom-category-input" maxlength="40" placeholder="pl. Film, Étel, Autómárka..." autocomplete="off">
+            <button id="add-category-btn" class="button ghost" type="button">＋ HOZZÁADÁS</button>
+          </div>
+          <div id="category-list" class="category-list"></div>
+        </div>
 
-<div id="message"></div>
-</section>
+        <button id="start-btn" class="button primary glow full">⚡ JÁTÉK INDÍTÁSA</button>
+      </div>
+      <div id="host-info" class="host-info"></div>
+    </div>
+    <div id="message"></div>
+  </section>
+
+  <aside class="lobby-side">
+    <div class="info-chip"><span>∞</span><div><b>NINCS IDŐKORLÁT</b><small>Addig tart a kör, amíg mindenki kész.</small></div></div>
+    <div class="info-chip"><span>ABC</span><div><b>ÚJ BETŰ MINDEN KÖRBEN</b><small>Ugyanaz a betű nem jön vissza.</small></div></div>
+    <div class="info-chip"><span>♛</span><div><b>HOST</b><small>A Host értékeli a válaszokat.</small></div></div>
+  </aside>
 </main>
-
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 <script>
-const socket = io({transports: ["polling"]});
+const socket = io({transports:["polling"]});
 const code = "{{ code }}";
-let joined = false;
-
 const nameInput = document.getElementById("name");
-const joinPanel = document.getElementById("join-panel");
-const lobbyPanel = document.getElementById("lobby-panel");
-const message = document.getElementById("message");
-
-const savedName = sessionStorage.getItem("ov_name");
+const savedName = sessionStorage.getItem("ov_name") || "";
 if (savedName) nameInput.value = savedName;
 
-document.getElementById("join-btn").onclick = join;
+function esc(s){return String(s ?? "").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]));}
+function msg(text, type="error"){document.getElementById("message").innerHTML=`<div class="${type}">${esc(text)}</div>`;}
 
-nameInput.addEventListener("keydown", e => {
-    if (e.key === "Enter") join();
-});
-
-function join() {
-    const name = nameInput.value.trim();
-    if (!name) {
-        showError("Írd be a neved.");
-        return;
-    }
-    socket.emit("join_game", {code, name});
+function join(){
+  const name=nameInput.value.trim();
+  if(!name){msg("Írd be a neved.");return;}
+  socket.emit("join_game",{code,name});
 }
+document.getElementById("join-btn").onclick=join;
+nameInput.addEventListener("keydown",e=>{if(e.key==="Enter")join();});
 
-socket.on("joined", data => {
-    joined = true;
-    sessionStorage.setItem("ov_name", data.name);
-    joinPanel.classList.add("hidden");
-    lobbyPanel.classList.remove("hidden");
+document.getElementById("copy-code").onclick=async()=>{
+  try{await navigator.clipboard.writeText(code);msg("A szobakód a vágólapra került.","info");}catch(e){msg(`Szobakód: ${code}`,"info");}
+};
 
-    if (data.state !== "lobby") {
-        window.location.href = `/game/${code}`;
-    }
+socket.on("joined",data=>{
+  sessionStorage.setItem("ov_name",data.name);
+  document.getElementById("join-panel").classList.add("hidden");
+  document.getElementById("lobby-panel").classList.remove("hidden");
+  if(data.state!=="lobby") window.location.href=`/game/${code}`;
 });
 
-socket.on("state", state => {
-    renderPlayers(state);
-    syncCategoriesFromState(state);
-
-    if (state.state !== "lobby") {
-        window.location.href = `/game/${code}`;
-    }
+socket.on("state",state=>{
+  renderPlayers(state);
+  if(state.state!=="lobby") window.location.href=`/game/${code}`;
 });
 
-const customCategoryInput = document.getElementById("custom-category-input");
-const customCategoryList = document.getElementById("custom-category-list");
 let customCategories = [];
 
-document.getElementById("add-category-btn").onclick = addCustomCategory;
-customCategoryInput.addEventListener("keydown", e => {
-    if (e.key === "Enter") addCustomCategory();
+function renderCategories(state){
+  const all = state.categories || [];
+  customCategories = all.slice(7).map(c => ({key:c[0], label:c[1], icon:c[2]}));
+  const list = document.getElementById("category-list");
+  if(!list) return;
+  list.innerHTML = "";
+  customCategories.forEach((cat, index) => {
+    const row = document.createElement("div");
+    row.className = "category-chip";
+    row.innerHTML = `<span>✦</span><b>${esc(cat.label)}</b><button type="button" data-index="${index}" title="Törlés">×</button>`;
+    row.querySelector("button").onclick = () => {
+      customCategories.splice(index, 1);
+      saveCategories();
+    };
+    list.appendChild(row);
+  });
+  document.getElementById("category-count").textContent = all.length;
+}
+
+function saveCategories(){
+  socket.emit("set_categories", {
+    code,
+    categories: customCategories.map(c => c.label)
+  });
+}
+
+function addCategory(){
+  const input = document.getElementById("custom-category-input");
+  const name = input.value.trim().replace(/\s+/g, " ");
+  if(!name) return;
+  if(name.length > 40){ msg("A kategória neve legfeljebb 40 karakter lehet."); return; }
+  const exists = [...customCategories.map(c=>c.label), "Ország","Város","Fiú","Lány","Növény","Állat","Tárgy"]
+    .some(x => x.toLowerCase() === name.toLowerCase());
+  if(exists){ msg("Ez a kategória már létezik."); return; }
+  customCategories.push({label:name});
+  input.value = "";
+  saveCategories();
+}
+
+document.getElementById("add-category-btn").onclick = addCategory;
+document.getElementById("custom-category-input").addEventListener("keydown", e => {
+  if(e.key === "Enter"){ e.preventDefault(); addCategory(); }
 });
 
-function addCustomCategory() {
-    const value = customCategoryInput.value.trim();
-    if (!value) return;
-    if (customCategories.some(x => x.toLowerCase() === value.toLowerCase())) {
-        showError("Ez a kategória már szerepel.");
-        return;
-    }
-    customCategories.push(value);
-    customCategoryInput.value = "";
-    saveCustomCategories();
-    renderCustomCategories();
+function renderPlayers(state){
+  renderCategories(state);
+  const list=document.getElementById("players");list.innerHTML="";
+  state.players.forEach((p,i)=>{
+    const row=document.createElement("div");row.className="player-row";
+    row.innerHTML=`<span class="player-rank">${i+1}</span><span class="avatar">${esc(p.name.charAt(0).toUpperCase())}</span><span class="player-name">${esc(p.name)}</span><span class="player-role">${p.is_host?"♛ HOST":"JÁTÉKOS"}</span>`;
+    list.appendChild(row);
+  });
+  document.getElementById("player-count-badge").textContent=`${state.players.length} / 10`;
+  const me=sessionStorage.getItem("ov_name");
+  const host=state.players.find(p=>p.is_host);
+  const amHost=!!host && host.name===me;
+  document.getElementById("host-controls").classList.toggle("hidden",!amHost);
+  document.getElementById("host-info").textContent=amHost?"♛ Te vagy a Host.":(host?`Host: ${host.name}`:"");
+  const range=document.getElementById("rounds");
+  range.value=state.total_rounds;
+  document.getElementById("round-number").textContent=state.total_rounds;
 }
 
-function removeCustomCategory(index) {
-    customCategories.splice(index, 1);
-    saveCustomCategories();
-    renderCustomCategories();
-}
-
-function saveCustomCategories() {
-    socket.emit("set_custom_categories", {code, categories: customCategories});
-}
-
-function renderCustomCategories() {
-    customCategoryList.innerHTML = "";
-    customCategories.forEach((name, index) => {
-        const tag = document.createElement("div");
-        tag.className = "custom-category-tag";
-        tag.innerHTML = `<span>✦ ${esc(name)}</span><button type="button" title="Eltávolítás">×</button>`;
-        tag.querySelector("button").onclick = () => removeCustomCategory(index);
-        customCategoryList.appendChild(tag);
-    });
-}
-
-function syncCategoriesFromState(state) {
-    const baseLabels = new Set(["Ország","Város","Fiú","Lány","Növény","Állat","Tárgy"]);
-    customCategories = (state.categories || [])
-        .map(item => Array.isArray(item) ? item[1] : "")
-        .filter(label => label && !baseLabels.has(label));
-    renderCustomCategories();
-}
-
-document.getElementById("rounds").onchange = e => {
-    socket.emit("set_rounds", {code, rounds: Number(e.target.value)});
-};
-
-document.getElementById("start-btn").onclick = () => {
-    socket.emit("start_game", {code});
-};
-
-socket.on("host_changed", data => {
-    showInfo(data.message);
-});
-
-socket.on("error_message", data => showError(data.message));
-
-function renderPlayers(state) {
-    const list = document.getElementById("players");
-    list.innerHTML = "";
-
-    state.players.forEach(p => {
-        const row = document.createElement("div");
-        row.className = "player-row";
-        row.innerHTML =
-            `<span>${esc(p.name)}</span><span>${p.is_host ? "👑 Host" : "Játékos"}</span>`;
-        list.appendChild(row);
-    });
-
-    const me = sessionStorage.getItem("ov_name");
-    const host = state.players.find(p => p.is_host);
-    const amHost = host && host.name === me;
-
-    document.getElementById("host-controls")
-        .classList.toggle("hidden", !amHost);
-
-    document.getElementById("host-info").textContent =
-        amHost ? "Te vagy a Host." : (host ? `Host: ${host.name}` : "");
-
-    document.getElementById("round-info").classList.remove("hidden");
-    document.getElementById("round-info").textContent =
-        `Beállított körök száma: ${state.total_rounds}`;
-    const select = document.getElementById("rounds");
-    if (document.activeElement !== select) select.value = String(state.total_rounds);
-}
-
-function showError(text) {
-    message.innerHTML = `<div class="error">${esc(text)}</div>`;
-}
-
-function showInfo(text) {
-    message.innerHTML = `<div class="info">${esc(text)}</div>`;
-}
-
-function esc(s) {
-    return String(s).replace(/[&<>"']/g, c => ({
-        "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
-    }[c]));
-}
+document.getElementById("rounds").oninput=e=>{document.getElementById("round-number").textContent=e.target.value;};
+document.getElementById("rounds").onchange=e=>socket.emit("set_rounds",{code,rounds:Number(e.target.value)});
+document.getElementById("start-btn").onclick=()=>socket.emit("start_game",{code});
+socket.on("host_changed",data=>msg(data.message,"info"));
+socket.on("error_message",data=>msg(data.message));
 </script>
 </body>
 </html>
