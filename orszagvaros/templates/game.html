@@ -1,285 +1,631 @@
 <!doctype html>
 <html lang="hu">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Országváros — Játék</title>
-<link rel="stylesheet" href="/static/style.css">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Országváros • Játék</title><link rel="stylesheet" href="/static/style.css">
 </head>
-<body class="screen-game">
-<div class="bg-stars"></div>
-<main class="game-shell">
-  <header class="game-top glass">
-    <div class="top-brand"><span class="mini-crown">♛</span><div><div class="brand-word small-brand">ORSZÁGVÁROS</div><div class="brand-sub">MULTIPLAYER</div></div></div>
-    <div class="room-top"><span>SZOBÁKÓD</span><strong>{{ code }}</strong><button id="copy-code">▣</button></div>
-    <div class="top-stat"><span>KÖR</span><strong id="round-title">1 / 5</strong></div>
-    <div class="top-stat"><span>JÁTÉKOSOK</span><strong>👥 <span id="player-count">0</span></strong></div>
-  </header>
+<body>
+<main class="container wide">
 
-  <div class="game-progress"><div id="progress-bar"></div></div>
+<header class="game-header">
 
-  <section id="playing-view" class="game-grid hidden">
-    <aside class="round-sidebar glass">
-      <div class="side-title">KÖRÖK</div>
-      <div id="round-list"></div>
-      <div class="side-tip">A már lejátszott körök zöld pipával jelennek meg.</div>
-    </aside>
+    <div class="game-brand">
 
-    <section class="play-main glass">
-      <div class="eyebrow center">AKTUÁLIS BETŰ</div>
-      <div class="letter-orb" id="letter">?</div>
-      <div class="timer-row no-limit"><span class="timer-icon">∞</span><strong>NINCS IDŐKORLÁT</strong><span id="timer-label">NYUGODTAN TÖLTSD KI</span></div>
-      <div id="used-letters" class="used-letters"></div>
-      <p class="play-instruction">Töltsétek ki a válaszokat, majd mindenki nyomjon <b>KÉSZ</b>-re!</p>
-      <div id="form-fields" class="answer-grid"></div>
-      <button id="ready-btn" class="ready-button">✓ KÉSZ</button>
-      <div id="ready-status" class="ready-status"><span id="ready-dot" class="dot"></span><span id="ready-text">Még nincs leadva</span></div>
-      <div id="submitted" class="success hidden">✓ Leadva! Várj a többiekre.</div>
-    </section>
+        <div class="game-mini-logo">
+            👑
+        </div>
 
-    <aside class="side-stack">
-      <div class="side-card glass"><div class="side-card-title">JÁTÉKOSOK</div><div id="live-players"></div></div>
-      <div class="side-card glass"><div class="side-card-title">SZABÁLYOK</div><div class="rule-mini"><b>+1</b><span>Minden elfogadott válasz 1 pont.</span></div><div class="rule-mini"><b>ABC</b><span>Egy betű csak egyszer kerül elő.</span></div><div class="rule-mini"><b>♛</b><span>A Host értékeli a válaszokat.</span></div></div>
-    </aside>
-  </section>
+        <div>
 
-  <section id="review-view" class="review-layout hidden">
-    <aside class="round-sidebar glass"><div class="side-title">KÖRÖK</div><div id="review-round-list"></div><div class="side-tip">Kész válaszok: a Host minden mezőt külön értékel.</div></aside>
-    <section class="review-main glass">
-      <div class="review-head"><div><div class="eyebrow">HOST PANEL</div><h2 id="review-title">3. KÖR — ÉRTÉKELÉS</h2><p class="muted">Értékeld a játékosok válaszait!</p></div><div class="points-badge">P</div></div>
-      <div class="review-legend"><span><i class="ok-dot"></i>Mindenkinél egyedi</span><span><i class="warn-dot"></i>Van, akinél ismétlődik</span><span><i class="bad-dot"></i>Senkinél sem jó</span></div>
-      <div id="review-table"></div>
-      <div class="review-actions"><button id="show-answers-btn" class="button ghost">◉ VÁLASZOK MEGJELENÍTÉSE</button><button id="next-btn" class="button primary glow hidden">KÖVETKEZŐ KÖR <span>›</span><small></small></button></div>
-    </section>
-  </section>
-
-  <section id="finished-view" class="finished-layout hidden">
-    <section class="results-main glass">
-      <div class="results-title"><span>🏆</span><h1>VÉGEREDMÉNY</h1><span>🏆</span></div>
-      <p id="final-subtitle" class="muted center"></p>
-      <div id="podium" class="podium"></div>
-      <div class="result-stats"><div><span>LEJÁTSZOTT KÖRÖK</span><b id="stat-rounds">0</b></div><div><span>ÖSSZES HELYES VÁLASZ</span><b id="stat-answers">—</b></div><div><span>LEGMAGASABB KÖR</span><b id="stat-best">—</b></div></div>
-      <div id="final-results" class="final-list"></div>
-      <a href="/" class="button primary glow new-game-button">↻ ÚJ JÁTÉK</a>
-    </section>
-    <aside class="results-side"><div class="info-chip"><span>∞</span><div><b>NINCS IDŐKORLÁT</b><small>Addig tart a kör, amíg mindenki kész.</small></div></div><div class="info-chip"><span>ABC</span><div><b>NINCS BETŰISMÉTLÉS</b><small>Minden körben új betű.</small></div></div><div class="info-chip"><span>👥</span><div><b>MULTIPLAYER</b><small>Játsszatok együtt.</small></div></div><div class="info-chip"><span>♛</span><div><b>HOST ÉRTÉKEL</b><small>A Host igazolja a válaszokat.</small></div></div></aside>
-  </section>
-
-  <div id="error"></div>
-</main>
-<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-<script>
-const socket=io({transports:["polling"]});
-const code="{{ code }}";
-const myName=sessionStorage.getItem("ov_name")||"";
-let isHost=false,categories=[],currentRound=0,totalRounds=0,currentState="unknown";
-const icons={country:"🌍",city:"🏙️",boy:"👦",girl:"👧",plant:"🌿",animal:"🐾",object:"◈"};
-const labels={country:"ORSZÁG",city:"VÁROS",boy:"FIÚ",girl:"LÁNY",plant:"NÖVÉNY",animal:"ÁLLAT",object:"TÁRGY"};
-
-function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]));}
-function show(id){["playing-view","review-view","finished-view"].forEach(x=>document.getElementById(x).classList.add("hidden"));document.getElementById(id).classList.remove("hidden");}
-function error(text,type="error"){document.getElementById("error").innerHTML=`<div class="${type}">${esc(text)}</div>`;setTimeout(()=>{document.getElementById("error").innerHTML=""},4500);}
-function renderRoundList(containerId){const box=document.getElementById(containerId);if(!box)return;box.innerHTML="";for(let i=1;i<=totalRounds;i++){const d=document.createElement("div");d.className=`round-item ${i<currentRound?"done":""} ${i===currentRound?"active":""} ${i>currentRound?"locked":""}`;d.innerHTML=`<span>${i}. KÖR</span><b>${i<currentRound?"✓":i===currentRound?"›":""}</b>`;box.appendChild(d);}}
-function renderPlayers(players){const box=document.getElementById("live-players");if(!box)return;box.innerHTML="";players.forEach(p=>{const d=document.createElement("div");d.className="live-player";d.innerHTML=`<span class="avatar">${esc(p.name.charAt(0).toUpperCase())}</span><span>${esc(p.name)}</span><b>${p.score}</b>`;box.appendChild(d);});}
-
-socket.on("connect",()=>{if(myName)socket.emit("join_game",{code,name:myName});else error("Előbb lépj be a lobbyban.");});
-socket.on("joined",d=>{isHost=d.is_host;});
-socket.on("state",state=>{currentState=state.state;const me=state.players.find(p=>p.name===myName);isHost=!!(me&&me.is_host);document.getElementById("player-count").textContent=state.players.length;totalRounds=Number(state.total_rounds||totalRounds);renderPlayers(state.players);if(state.state==="finished")show("finished-view");});
-
-socket.on("round_started",data=>{
-  currentState="playing";categories=data.categories;currentRound=Number(data.round);totalRounds=Number(data.total_rounds);show("playing-view");
-  document.getElementById("round-title").textContent=`${currentRound} / ${totalRounds}`;
-  document.getElementById("letter").textContent=data.letter;
-  document.getElementById("progress-bar").style.width=`${(currentRound/totalRounds)*100}%`;
-  renderRoundList("round-list");
-  const used=document.getElementById("used-letters");used.innerHTML=`<span>KORÁBBI BETŰK</span>`+(data.used_letters||[]).map(l=>`<b>${esc(l)}</b>`).join("");
-  const fields=document.getElementById("form-fields");fields.innerHTML="";
-  categories.forEach(([key,label,icon])=>{const card=document.createElement("label");card.className="answer-card";card.innerHTML=`<div class="answer-icon">${icon||icons[key]}</div><div class="answer-label">${esc(label)}</div><input id="answer-${key}" autocomplete="off" maxlength="100" placeholder="${esc(data.letter)} betűvel..."></label>`;fields.appendChild(card);});
-  document.getElementById("ready-btn").disabled=false;document.getElementById("submitted").classList.add("hidden");document.getElementById("ready-dot").classList.remove("live");document.getElementById("ready-text").textContent="Még nincs leadva";
-});
-
-document.getElementById("ready-btn").onclick=()=>{if(currentState!=="playing")return;const answers={};categories.forEach(([key])=>answers[key]=document.getElementById(`answer-${key}`)?.value||"");socket.emit("submit_answers",{code,answers});};
-socket.on("answers_submitted",()=>{document.getElementById("ready-btn").disabled=true;document.getElementById("submitted").classList.remove("hidden");document.getElementById("ready-dot").classList.add("live");document.getElementById("ready-text").textContent="Válaszok leadva — várj a többiekre";});
-
-socket.on("round_review",data=>{currentState="review";categories=data.categories;currentRound=Number(data.round);totalRounds=Number(data.total_rounds);isHost=!!data.is_host;show("review-view");renderRoundList("review-round-list");renderReview(data.players);document.getElementById("review-title").textContent=`${currentRound}. KÖR — ÉRTÉKELÉS`;const next=document.getElementById("next-btn");next.classList.toggle("hidden",!isHost);next.innerHTML=currentRound>=totalRounds?`VÉGEREDMÉNY <span>›</span>`:`KÖVETKEZŐ KÖR <span>›</span><small>${currentRound+1} / ${totalRounds}</small>`;});
-socket.on("review_refresh",data=>{if(currentState==="review")renderReview(data.players);});
-
-function renderReview(players){
-  const table=document.getElementById("review-table");
-  table.innerHTML="";
-  players.forEach(p=>{
-    const row=document.createElement("div");
-    row.className="review-player-row";
-    let cells="";
-    categories.forEach(([key,label,icon])=>{
-      const ans=p.answers?.[key]||"—";
-      const val=p.accepted?.[key];
-      const state=val===true?"accepted":val===false?"rejected":"";
-      cells+=`
-        <div class="review-cell ${state}">
-          <div class="review-cell-label">${icon||icons[key]} ${esc(label)}</div>
-          <div class="review-answer">${esc(ans)}</div>
-          ${isHost?`
-            <div class="eval-buttons">
-              <button type="button" class="eval yes ${val===true?"selected":""}" data-player="${esc(p.sid)}" data-cat="${esc(key)}" data-value="yes" aria-label="Helyes válasz">✓ HELYES</button>
-              <button type="button" class="eval no ${val===false?"selected":""}" data-player="${esc(p.sid)}" data-cat="${esc(key)}" data-value="no" aria-label="Rossz válasz">✕ ROSSZ</button>
-            </div>`:""}
-        </div>`;
-    });
-    row.innerHTML=`<div class="review-player-name"><span class="avatar">${esc(p.name.charAt(0).toUpperCase())}</span><div><b>${esc(p.name)}</b><small>${p.is_host?"♛ Host":"Játékos"}</small></div><strong class="review-score" data-score="${esc(p.sid)}">${p.score}</strong></div><div class="review-cells">${cells}</div>`;
-    table.appendChild(row);
-  });
-  table.querySelectorAll(".eval").forEach(btn=>{
-    btn.onclick=(event)=>{
-      event.preventDefault();
-      event.stopPropagation();
-      const accepted = btn.dataset.value === "yes";
-      socket.emit("set_answer_validity",{
-        code: code,
-        player_sid: btn.dataset.player,
-        category: btn.dataset.cat,
-        accepted: accepted,
-        value: accepted ? "true" : "false"
-      });
-    };
-  });
-}
-
-socket.on("evaluation_update",data=>{const score=document.querySelector(`[data-score="${CSS.escape(data.player_sid)}"]`);if(score)score.textContent=data.score;});
-document.getElementById("next-btn").onclick=()=>socket.emit("next_round",{code});
-document.getElementById("show-answers-btn").onclick=()=>error("A válaszok már láthatók.","info");
-
-document.getElementById("copy-code").onclick=async()=>{try{await navigator.clipboard.writeText(code);error("A szobakód a vágólapra került.","info");}catch(e){error(`Szobakód: ${code}`,"info");}};
-
-socket.on("game_finished", data => {
-    currentState = "finished";
-    show("finished-view");
-
-    document.getElementById("progress-bar").style.width = "100%";
-
-    const podium = document.getElementById("podium");
-    const list = document.getElementById("final-results");
-
-    podium.innerHTML = "";
-    list.innerHTML = "";
-
-    const players = data.players || [];
-
-    // Mindig pontszám szerint csökkenő sorrend
-    const sortedPlayers = [...players].sort(
-        (a, b) => Number(b.score || 0) - Number(a.score || 0)
-    );
-
-    // =========================
-    // PÓDIUM
-    // =========================
-
-    const podiumPlayers = [
-        {
-            player: sortedPlayers[1],
-            medal: "🥈",
-            className: "second"
-        },
-        {
-            player: sortedPlayers[0],
-            medal: "🥇",
-            className: "first"
-        },
-        {
-            player: sortedPlayers[2],
-            medal: "🥉",
-            className: "third"
-        }
-    ];
-
-    podiumPlayers.forEach(item => {
-
-        if (!item.player) return;
-
-        const p = item.player;
-
-        const d = document.createElement("div");
-
-        d.className = `podium-card ${item.className}`;
-
-        d.innerHTML = `
-            <div class="podium-medal">
-                ${item.medal}
+            <div class="small">
+                ORSZÁGVÁROS
             </div>
 
-            <span class="avatar big">
-                ${esc(p.name.charAt(0).toUpperCase())}
-            </span>
+            <h1 id="round-title">
+                1. KÖR / 10
+            </h1>
 
-            <b>
-                ${esc(p.name)}
-            </b>
+        </div>
 
-            <strong>
-                ${Number(p.score || 0)}
-            </strong>
+    </div>
 
-            <small>
-                pont
-            </small>
-        `;
+    <div class="score-header">
+        👥 <span id="player-count">4</span> játékos
+    </div>
 
-        podium.appendChild(d);
-    });
+</header>
+
+<div class="progress-shell">
+
+    <div
+        id="progress-bar"
+        class="progress-bar">
+    </div>
+
+</div>
+
+<section id="playing-view" class="card hidden">
+  <div class="letter-box">
+    AKTUÁLIS BETŰ
+    <strong id="letter">?</strong>
+  </div>
+  <div id="used-letters" class="used-letters">Korábban: </div>
+  <div id="form-fields" class="categories"></div>
+  <button id="ready-btn" class="button primary full">✓ KÉSZ — VÁLASZOK LEADÁSA</button>
+  <div id="ready-status" class="ready-status"><span id="ready-dot" class="dot"></span><span id="ready-text">Még nincs leadva</span></div>
+  <div id="submitted" class="success hidden">✓ Leadva! Várj a többiekre.</div>
+</section>
+
+<section id="review-view" class="card hidden">
+  <div class="small">HOST PANEL</div>
+  <h2 id="review-title">Válaszok értékelése</h2>
+  <p class="muted">A Host minden választ külön elfogadhat ✓ vagy elutasíthat ✕.</p>
+  <div id="review-table"></div>
+  <button id="next-btn" class="button primary full hidden">Következő kör</button>
+</section>
+
+<section id="finished-view" class="card hidden">
+
+    <div class="finished-hero">
+
+        <div class="trophy">
+            🏆
+        </div>
+
+        <div class="small">
+            MECCS VÉGE
+        </div>
+
+        <h2>
+            VÉGEREDMÉNY
+        </h2>
+
+        <p class="subtitle">
+            A játék véget ért!
+        </p>
+
+    </div>
 
 
-    // =========================
-    // TELJES RANGLISTA
-    // =========================
+    <!-- DOBogó -->
 
-    sortedPlayers.forEach((p, i) => {
-
-        const d = document.createElement("div");
-
-        d.className = "final-row";
-
-        d.innerHTML = `
-            <span class="place">
-                ${i + 1}.
-            </span>
-
-            <span class="avatar">
-                ${esc(p.name.charAt(0).toUpperCase())}
-            </span>
-
-            <b>
-                ${i === 0 ? "👑 " : ""}
-                ${esc(p.name)}
-            </b>
-
-            <strong>
-                ${Number(p.score || 0)} pont
-            </strong>
-        `;
-
-        list.appendChild(d);
-    });
+    <div
+        id="podium"
+        class="podium">
+    </div>
 
 
-    // =========================
-    // STATISZTIKÁK
-    // =========================
+    <!-- Teljes ranglista -->
 
-    document.getElementById("final-subtitle").textContent =
-        `${data.total_rounds} kör • ${sortedPlayers.length} játékos`;
+    <div
+        id="final-results">
+    </div>
 
-    document.getElementById("stat-rounds").textContent =
-        data.total_rounds;
 
-    document.getElementById("stat-answers").textContent =
-        "—";
+    <!-- ÚJ JÁTÉK -->
 
-    document.getElementById("stat-best").textContent =
-        sortedPlayers.length
-            ? `${Number(sortedPlayers[0].score || 0)} pont`
-            : "—";
+    <div class="new-game-wrap">
+
+        <a
+            href="/"
+            class="button primary new-game-button">
+
+            ↻ ÚJ JÁTÉK
+
+        </a>
+
+    </div>
+
+</section>
+
+<div id="error"></div>
+</main>
+
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script>
+const socket = io({transports:["polling"]});
+const code = "{{ code }}";
+const myName = sessionStorage.getItem("ov_name") || "";
+let isHost=false, categories=[], currentState="unknown", currentRound=0, totalRounds=0;
+
+const categoryIcons = {
+  country:"🌍", city:"🏙️", boy:"👦", girl:"👧", plant:"🌿", animal:"🐾", object:"◈"
+};
+
+socket.on("connect",()=>socket.emit("join_game",{code,name:myName}));
+
+socket.on("joined",data=>{ isHost=data.is_host; });
+
+socket.on("state",state=>{
+  currentState=state.state;
+  const me=state.players.find(p=>p.name===myName);
+  isHost=!!(me&&me.is_host);
+  document.getElementById("player-count").textContent=state.players.length;
+  if(state.total_rounds) totalRounds=state.total_rounds;
+  if(state.state==="finished") show("finished-view");
 });
-socket.on("error_message",d=>error(d.message));
+
+socket.on("round_started",data=>{
+  currentState="playing"; categories=data.categories; currentRound=Number(data.round); totalRounds=Number(data.total_rounds);
+  document.getElementById("round-title").textContent=`${data.round}. KÖR / ${data.total_rounds}`;
+  document.getElementById("letter").textContent=data.letter;
+  document.getElementById("progress-bar").style.width=`${Math.min(100,(data.round/data.total_rounds)*100)}%`;
+
+  const used=document.getElementById("used-letters");
+  used.innerHTML="Korábban: ";
+  (data.used_letters||[]).forEach((l,i)=>{
+    const s=document.createElement("span");s.textContent=l;used.appendChild(s);
+  });
+
+  const fields=document.getElementById("form-fields"); fields.innerHTML="";
+  const categoryIcons = {
+        country: "🌍",
+        city: "🏙️",
+        boy: "👦",
+        girl: "👧",
+        plant: "🌿",
+        animal: "🐾",
+        object: "◈"
+    };
+
+    data.categories.forEach(([key, label]) => {
+
+        const box = document.createElement("div");
+
+        box.className = "category";
+
+        box.innerHTML = `
+            <label>
+                <span class="cat-icon">
+                    ${categoryIcons[key] || "✦"}
+                </span>
+
+                ${label}
+            </label>
+
+            <input
+                id="answer-${key}"
+                maxlength="100"
+                autocomplete="off"
+                placeholder="${data.letter} betűvel..."
+            >
+        `;
+
+        fields.appendChild(box);
+    });
+  document.getElementById("ready-btn").disabled=false;
+  document.getElementById("submitted").classList.add("hidden");
+  document.getElementById("ready-dot").classList.remove("live");
+  document.getElementById("ready-text").textContent="Még nincs leadva";
+  show("playing-view");
+});
+
+document.getElementById("ready-btn").onclick=()=>{
+  const answers={};
+  categories.forEach(([key])=>{
+    const input=document.getElementById(`answer-${key}`);
+    answers[key]=input?input.value:"";
+  });
+  socket.emit("submit_answers",{code,answers});
+};
+
+socket.on("answers_submitted",()=>{
+  document.getElementById("ready-btn").disabled=true;
+  document.getElementById("submitted").classList.remove("hidden");
+  document.getElementById("ready-dot").classList.add("live");
+  document.getElementById("ready-text").textContent="Válaszok leadva";
+});
+
+socket.on("round_review",data=>{
+  currentState="review";categories=data.categories;isHost=!!data.is_host;
+  renderReview(data.players,data.round,data.total_rounds);show("review-view");
+});
+
+socket.on("review_refresh",data=>{
+  if(currentState==="review")renderReview(data.players,currentRound,totalRounds);
+});
+
+socket.on("evaluation_update",data=>{
+  updateScore(data.player_sid,data.score);
+  const yes=document.querySelector(`[data-player="${data.player_sid}"][data-category="${data.category}"][data-value="true"]`);
+  const no=document.querySelector(`[data-player="${data.player_sid}"][data-category="${data.category}"][data-value="false"]`);
+  if(yes)yes.classList.toggle("selected",data.accepted===true);
+  if(no)no.classList.toggle("selected",data.accepted===false);
+});
+
+document.getElementById("next-btn").onclick=()=>socket.emit("next_round",{code});
+
+socket.on("game_finished",data=>{
+  currentState="finished";
+  document.getElementById("progress-bar").style.width="100%";
+  const out=document.getElementById("final-results");out.innerHTML="";
+  const podium=document.getElementById("podium");podium.innerHTML="";
+  const top=data.players.slice(0,3);
+  const cls=["second","first","third"];
+  const order=[1,0,2];
+  order.forEach(idx=>{
+    const p=top[idx];if(!p)return;
+    const card=document.createElement("div");card.className=`podium-card ${cls[idx]}`;
+    const medal=["🥈","🥇","🥉"][idx];
+    card.innerHTML=`<div class="podium-place">${medal}</div><div>${esc(p.name)}</div><div class="podium-score">${p.score}</div><div class="muted">pont</div>`;
+    podium.appendChild(card);
+  });
+  data.players.forEach((p,i)=>{
+    const row=document.createElement("div");row.className="final-row";
+    row.innerHTML=`<span class="place">${i+1}.</span><span>${i===0?"👑 ":""}${esc(p.name)}</span><strong>${p.score} pont</strong>`;
+    out.appendChild(row);
+  });
+  show("finished-view");
+});
+
+socket.on("error_message",data=>{
+  document.getElementById("error").innerHTML=`<div class="error">${esc(data.message)}</div>`;
+});
+
+function renderReview(players, round, total) {
+
+    const table =
+        document.getElementById("review-table");
+
+    table.innerHTML = "";
+
+    players.forEach(player => {
+
+        const section =
+            document.createElement("div");
+
+        section.className =
+            "review-player";
+
+        section.innerHTML = `
+            <h3>
+
+                <span>
+                    ${esc(player.name)}
+
+                    ${
+                        player.is_host
+                            ? '<span class="host-badge">👑 HOST</span>'
+                            : ''
+                    }
+                </span>
+
+                <span
+                    class="score"
+                    data-score="${esc(player.sid)}">
+
+                    ${player.score || 0} pont
+
+                </span>
+
+            </h3>
+        `;
+
+        const grid =
+            document.createElement("div");
+
+        grid.className =
+            "review-grid";
+
+
+        categories.forEach(([key, label]) => {
+
+            const item =
+                document.createElement("div");
+
+            item.className =
+                "review-item";
+
+
+            const answer =
+                player.answers &&
+                player.answers[key]
+                    ? player.answers[key]
+                    : "(üres)";
+
+
+            const answerArea =
+                document.createElement("div");
+
+            answerArea.innerHTML = `
+
+                <div class="muted">
+                    ${categoryIcons[key] || "✦"}
+                    ${esc(label)}
+                </div>
+
+                <strong>
+                    ${esc(answer)}
+                </strong>
+
+            `;
+
+
+            item.appendChild(answerArea);
+
+
+            /*
+             * A gombokat csak a Host látja.
+             */
+
+            if (isHost) {
+
+                const controls =
+                    document.createElement("div");
+
+                controls.className =
+                    "evaluation-buttons";
+
+
+                const accept =
+                    document.createElement("button");
+
+                accept.className =
+                    "eval accepted";
+
+                accept.textContent =
+                    "✓";
+
+                accept.title =
+                    "Válasz elfogadása";
+
+
+                const reject =
+                    document.createElement("button");
+
+                reject.className =
+                    "eval rejected";
+
+                reject.textContent =
+                    "✕";
+
+                reject.title =
+                    "Válasz elutasítása";
+
+
+                /*
+                 * Korábbi értékelés betöltése
+                 */
+
+                const previous =
+                    player.accepted &&
+                    player.accepted[key];
+
+
+                if (previous === true) {
+
+                    accept.classList.add(
+                        "selected"
+                    );
+
+                }
+
+                if (previous === false) {
+
+                    reject.classList.add(
+                        "selected"
+                    );
+
+                }
+
+
+                /*
+                 * Elfogadás
+                 */
+
+                accept.onclick = () => {
+
+                    evaluate(
+                        player.sid,
+                        key,
+                        true
+                    );
+
+                };
+
+
+                /*
+                 * Elutasítás
+                 */
+
+                reject.onclick = () => {
+
+                    evaluate(
+                        player.sid,
+                        key,
+                        false
+                    );
+
+                };
+
+
+                controls.appendChild(
+                    accept
+                );
+
+                controls.appendChild(
+                    reject
+                );
+
+                item.appendChild(
+                    controls
+                );
+
+            }
+
+
+            grid.appendChild(item);
+
+        });
+
+
+        section.appendChild(grid);
+
+        table.appendChild(section);
+
+    });
+
+
+    /*
+     * Következő kör / végeredmény gomb
+     */
+
+    const next =
+        document.getElementById("next-btn");
+
+
+    if (isHost) {
+
+        next.classList.remove("hidden");
+
+
+        if (
+            Number(round) >=
+            Number(total)
+        ) {
+
+            next.textContent =
+                "🏆 VÉGEREDMÉNY";
+
+        } else {
+
+            next.textContent =
+                "⚡ KÖVETKEZŐ KÖR";
+
+        }
+
+    } else {
+
+        next.classList.add("hidden");
+
+    }
+
+
+    /*
+     * Kör számláló
+     */
+
+    const reviewTitle =
+        document.getElementById(
+            "review-title"
+        );
+
+
+    reviewTitle.textContent =
+        `${round}. KÖR / ${total} — ÉRTÉKELÉS`;
+
+}
+
+function evaluate(playerSid,category,accepted){
+  socket.emit("accept_answer",{code,player_sid:playerSid,category,accepted});
+}
+function updateScore(sid,score){
+  const e=document.querySelector(`[data-score="${sid}"]`);if(e)e.textContent=`${score} pont`;
+}
+function show(id){
+  ["playing-view","review-view","finished-view"].forEach(x=>document.getElementById(x).classList.add("hidden"));
+  document.getElementById(id).classList.remove("hidden");
+}
+function esc(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]));}
+
+        finishedView.classList.remove("hidden");
+
+        players.sort(
+            (a, b) =>
+                Number(b.score || 0) -
+                Number(a.score || 0)
+        );
+
+        const podium =
+            document.getElementById("podium");
+
+        podium.innerHTML = "";
+
+        const medals = [
+            "🥇",
+            "🥈",
+            "🥉"
+        ];
+
+        players
+            .slice(0, 3)
+            .forEach((player, index) => {
+
+                const card =
+                    document.createElement("div");
+
+                card.className =
+                    "podium-card " +
+                    (
+                        index === 0
+                            ? "first"
+                            : index === 1
+                            ? "second"
+                            : "third"
+                    );
+
+                card.innerHTML = `
+
+                    <div class="trophy">
+                        ${medals[index]}
+                    </div>
+
+                    <strong>
+                        ${esc(player.name)}
+                    </strong>
+
+                    <div class="podium-score">
+                        ${player.score || 0}
+                    </div>
+
+                    <div class="subtitle">
+                        pont
+                    </div>
+
+                `;
+
+                podium.appendChild(card);
+            });
+
+        const results =
+            document.getElementById("final-results");
+
+        results.innerHTML = "";
+
+        players.forEach((player, index) => {
+
+            const row =
+                document.createElement("div");
+
+            row.className = "final-row";
+
+            row.innerHTML = `
+
+                <div class="place">
+                    #${index + 1}
+                </div>
+
+                <div style="flex:1">
+
+                    <strong>
+                        ${esc(player.name)}
+                    </strong>
+
+                </div>
+
+                <strong>
+                    ${player.score || 0} pont
+                </strong>
+
+            `;
+
+            results.appendChild(row);
+
+        });
+
+    }
+
+</script>
 </script>
 </body>
 </html>
