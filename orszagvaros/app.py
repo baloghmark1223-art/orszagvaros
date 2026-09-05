@@ -4,6 +4,7 @@ import random
 import string
 import uuid
 import re
+import time
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = "orszagvaros-v3-secret"
@@ -43,9 +44,11 @@ def new_game():
         "state": "lobby",          # lobby / playing / review / finished
         "round": 0,
         "total_rounds": 5,
+        "mode": "unlimited",
         "letter": None,
         "used_letters": [],
         "deadline": None,
+        "round_started_at": None,
         "ready": set(),
         "answers": {},              # sid -> {category: answer}
         "accepted": {},             # sid -> {category: bool}
@@ -63,7 +66,8 @@ def public_state(game):
         "total_rounds": game["total_rounds"],
         "letter": game["letter"],
         "used_letters": list(game["used_letters"]),
-        "deadline": None,
+        "deadline": game.get("deadline"),
+        "mode": game.get("mode", "unlimited"),
         "categories": game["categories"],
         "players": [
             {
@@ -145,7 +149,9 @@ def send_current_view(sid, code):
             "total_rounds": game["total_rounds"],
             "letter": game["letter"],
             "used_letters": list(game["used_letters"]),
-            "duration": 0,
+            "mode": game.get("mode", "unlimited"),
+            "duration": 120 if game.get("mode") == "timed" else 0,
+            "deadline": game.get("deadline"),
             "categories": game["categories"],
         }, to=sid)
         if sid in game["ready"]:
@@ -195,6 +201,7 @@ def start_round(code):
     game["letter"] = letter
     game["state"] = "playing"
     game["deadline"] = None
+    game["round_started_at"] = time.time()
     game["ready"] = set()
     game["answers"] = {}
     game["accepted"] = {}
@@ -204,16 +211,36 @@ def start_round(code):
         sid: player["score"] for sid, player in game["players"].items()
     }
 
+    if game.get("mode") == "timed":
+        game["deadline"] = time.time() + 120
+
     socketio.emit("round_started", {
         "round": game["round"],
         "total_rounds": game["total_rounds"],
         "letter": game["letter"],
         "used_letters": list(game["used_letters"]),
-        "duration": 0,
+        "mode": game.get("mode", "unlimited"),
+        "duration": 120 if game.get("mode") == "timed" else 0,
+        "deadline": game.get("deadline"),
         "categories": game["categories"],
     }, room=code)
 
     broadcast(code)
+    if game.get("mode") == "timed":
+        socketio.start_background_task(round_timer, code, game["round"])
+
+def round_timer(code, round_number):
+    """A 2 perces kör szerveroldali lezárása."""
+    while True:
+        socketio.sleep(0.25)
+        game = games.get(code)
+        if not game or game.get("state") != "playing" or game.get("round") != round_number:
+            return
+        deadline = game.get("deadline")
+        if deadline and time.time() >= deadline:
+            finish_round(code)
+            return
+
 def normalize_answer(value):
     """Összehasonlításhoz egységesíti a válaszokat: kis/nagybetű és fölösleges szóköz nem számít."""
     return re.sub(r"\s+", " ", str(value or "").strip()).casefold()
@@ -447,6 +474,26 @@ def on_set_rounds(data):
     broadcast(code)
 
 
+@socketio.on("set_mode")
+def on_set_mode(data):
+    code = str(data.get("code", "")).strip().upper()
+    game = games.get(code)
+    if not game:
+        emit("error_message", {"message": "Nincs ilyen szoba."})
+        return
+    if request.sid != game["host"]:
+        emit("error_message", {"message": "Csak a Host állíthatja a játékmódot."})
+        return
+    if game["state"] != "lobby":
+        emit("error_message", {"message": "A játékmód csak indulás előtt módosítható."})
+        return
+    mode = str(data.get("mode", "unlimited")).strip().lower()
+    if mode not in {"unlimited", "timed", "first_ready"}:
+        mode = "unlimited"
+    game["mode"] = mode
+    broadcast(code)
+
+
 @socketio.on("start_game")
 def on_start_game(data):
     code = str(data.get("code", "")).strip().upper()
@@ -490,7 +537,10 @@ def on_submit_answers(data):
     emit("answers_submitted", {}, to=sid)
     broadcast(code)
 
-    if game["ready"] == set(game["players"].keys()):
+    # Játékmódok: első KÉSZ = azonnali körzárás; normál módban mindenki KÉSZ kell legyen.
+    if game.get("mode") == "first_ready":
+        finish_round(code)
+    elif game["ready"] == set(game["players"].keys()):
         finish_round(code)
 
 

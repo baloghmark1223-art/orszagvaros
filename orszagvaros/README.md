@@ -1,21 +1,15 @@
-# Országváros v4 – Neon
+# Országváros – v8 játékmódok + automatikus egyezés
 
-## Jellemzők
-- Kék-fekete neon látványvilág
-- 1–10 kör választható a Hostnál
-- Egy meccsen belül nincs betűismétlés
-- Nincs időkorlát: a kör addig tart, amíg minden játékos meg nem nyomja a KÉSZ gombot
-- Host értékeli a válaszokat
-- Elfogadott válasz = 1 pont
-- Körönkénti értékelés és végeredmény
-- ÚJ JÁTÉK csak a végeredménynél
-- Socket.IO polling, Windows alatt websocket-kiegészítő nélkül
+Ez a verzió az előző v8 + plusz kategóriák + ranglista javítás továbbfejlesztése.
 
-## Indítás
-```text
-py -m pip install -r requirements.txt
-py app.py
-```
-Nyisd meg: http://localhost:5000
+## Játékmódok
+- Korlátlan idő: a kör akkor ér véget, amikor minden játékos KÉSZ-re nyom.
+- 2 perces: 120 másodperc után a szerver automatikusan lezárja a kört. Ha mindenki előbb kész, akkor előbb zárul.
+- Első KÉSZ: amint bármelyik játékos KÉSZ-re nyom, az egész kör azonnal véget ér.
 
-Hálózaton a szerver gép IP-címét használd, például: http://192.168.0.14:5000
+A módot kizárólag a Host állíthatja a lobbyban.
+
+## Automatikus egyezés
+Kategóriánként történik az egyezésvizsgálat. A kis-/nagybetű és a felesleges szóköz nem számít. Ha legalább két játékos ugyanazt a nem üres választ adja, az automatikusan helytelenként jelenik meg. A Host ettől függetlenül a HELYES gombbal jóváhagyhatja, vagy a ROSSZ gombbal elutasíthatja.
+
+A 7 alap kategória és a plusz kategóriák továbbra is működnek.
