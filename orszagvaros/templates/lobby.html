@@ -38,6 +38,17 @@
         <input id="rounds" type="range" min="1" max="10" value="5">
         <div class="range-labels"><span>1</span><span>5</span><span>10</span></div>
 
+        <div class="custom-category-box game-mode-box">
+          <div class="setting-head category-head">
+            <div><div class="eyebrow">JÁTÉKMÓD</div><h3>HOGYAN ÉRJEN VÉGET A KÖR?</h3></div>
+          </div>
+          <div class="mode-options">
+            <label class="mode-option"><input type="radio" name="game-mode" value="unlimited" checked><span class="mode-title">∞ KORLÁTLAN IDŐ</span><small>Mindenki KÉSZ-re nyom. Ez a jelenlegi mód.</small></label>
+            <label class="mode-option"><input type="radio" name="game-mode" value="timed"><span class="mode-title">⏱ 2 PERC</span><small>120 másodperc után automatikusan véget ér a kör.</small></label>
+            <label class="mode-option"><input type="radio" name="game-mode" value="first_ready"><span class="mode-title">⚡ ELSŐ KÉSZ</span><small>Amint egy játékos KÉSZ-re nyom, mindenkinek véget ér a kör.</small></label>
+          </div>
+        </div>
+
         <div class="custom-category-box">
           <div class="setting-head category-head">
             <div><div class="eyebrow">SAJÁT KATEGÓRIÁK</div><h3>+ EXTRA KATEGÓRIÁK</h3></div>
@@ -59,7 +70,7 @@
   </section>
 
   <aside class="lobby-side">
-    <div class="info-chip"><span>∞</span><div><b>NINCS IDŐKORLÁT</b><small>Addig tart a kör, amíg mindenki kész.</small></div></div>
+    <div class="info-chip"><span>🎮</span><div><b>3 JÁTÉKMÓD</b><small>Korlátlan idő, 2 perc vagy első KÉSZ.</small></div></div>
     <div class="info-chip"><span>ABC</span><div><b>ÚJ BETŰ MINDEN KÖRBEN</b><small>Ugyanaz a betű nem jön vissza.</small></div></div>
     <div class="info-chip"><span>♛</span><div><b>HOST</b><small>A Host értékeli a válaszokat.</small></div></div>
   </aside>
@@ -161,11 +172,15 @@ function renderPlayers(state){
   document.getElementById("host-info").textContent=amHost?"♛ Te vagy a Host.":(host?`Host: ${host.name}`:"");
   const range=document.getElementById("rounds");
   range.value=state.total_rounds;
+  document.querySelectorAll('input[name="game-mode"]').forEach(r=>{r.checked=r.value===(state.mode||"unlimited");});
   document.getElementById("round-number").textContent=state.total_rounds;
 }
 
 document.getElementById("rounds").oninput=e=>{document.getElementById("round-number").textContent=e.target.value;};
 document.getElementById("rounds").onchange=e=>socket.emit("set_rounds",{code,rounds:Number(e.target.value)});
+document.querySelectorAll('input[name="game-mode"]').forEach(r=>{
+  r.onchange=()=>socket.emit("set_mode",{code,mode:r.value});
+});
 document.getElementById("start-btn").onclick=()=>socket.emit("start_game",{code});
 socket.on("host_changed",data=>msg(data.message,"info"));
 socket.on("error_message",data=>msg(data.message));

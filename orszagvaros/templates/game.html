@@ -28,7 +28,7 @@
     <section class="play-main glass">
       <div class="eyebrow center">AKTUÁLIS BETŰ</div>
       <div class="letter-orb" id="letter">?</div>
-      <div class="timer-row no-limit"><span class="timer-icon">∞</span><strong>NINCS IDŐKORLÁT</strong><span id="timer-label">NYUGODTAN TÖLTSD KI</span></div>
+      <div id="timer-row" class="timer-row no-limit"><span id="timer-icon" class="timer-icon">∞</span><strong id="timer-mode-title">NINCS IDŐKORLÁT</strong><span id="timer-label">NYUGODTAN TÖLTSD KI</span></div>
       <div id="used-letters" class="used-letters"></div>
       <p class="play-instruction">Töltsétek ki a válaszokat, majd mindenki nyomjon <b>KÉSZ</b>-re!</p>
       <div id="form-fields" class="answer-grid"></div>
@@ -62,7 +62,7 @@
       <div id="final-results" class="final-list"></div>
       <a href="/" class="button primary glow new-game-button">↻ ÚJ JÁTÉK</a>
     </section>
-    <aside class="results-side"><div class="info-chip"><span>∞</span><div><b>NINCS IDŐKORLÁT</b><small>Addig tart a kör, amíg mindenki kész.</small></div></div><div class="info-chip"><span>ABC</span><div><b>NINCS BETŰISMÉTLÉS</b><small>Minden körben új betű.</small></div></div><div class="info-chip"><span>👥</span><div><b>MULTIPLAYER</b><small>Játsszatok együtt.</small></div></div><div class="info-chip"><span>♛</span><div><b>HOST ÉRTÉKEL</b><small>A Host igazolja a válaszokat.</small></div></div></aside>
+    <aside class="results-side"><div class="info-chip"><span>🎮</span><div><b>JÁTÉKMÓD</b><small>A választott mód szerint zárul a kör.</small></div></div><div class="info-chip"><span>ABC</span><div><b>NINCS BETŰISMÉTLÉS</b><small>Minden körben új betű.</small></div></div><div class="info-chip"><span>👥</span><div><b>MULTIPLAYER</b><small>Játsszatok együtt.</small></div></div><div class="info-chip"><span>♛</span><div><b>HOST ÉRTÉKEL</b><small>A Host igazolja a válaszokat.</small></div></div></aside>
   </section>
 
   <div id="error"></div>
@@ -72,7 +72,7 @@
 const socket=io({transports:["polling"]});
 const code="{{ code }}";
 const myName=sessionStorage.getItem("ov_name")||"";
-let isHost=false,categories=[],currentRound=0,totalRounds=0,currentState="unknown";
+let isHost=false,categories=[],currentRound=0,totalRounds=0,currentState="unknown",gameMode="unlimited",timerInterval=null;
 const icons={country:"🌍",city:"🏙️",boy:"👦",girl:"👧",plant:"🌿",animal:"🐾",object:"◈"};
 const labels={country:"ORSZÁG",city:"VÁROS",boy:"FIÚ",girl:"LÁNY",plant:"NÖVÉNY",animal:"ÁLLAT",object:"TÁRGY"};
 
@@ -82,12 +82,27 @@ function error(text,type="error"){document.getElementById("error").innerHTML=`<d
 function renderRoundList(containerId){const box=document.getElementById(containerId);if(!box)return;box.innerHTML="";for(let i=1;i<=totalRounds;i++){const d=document.createElement("div");d.className=`round-item ${i<currentRound?"done":""} ${i===currentRound?"active":""} ${i>currentRound?"locked":""}`;d.innerHTML=`<span>${i}. KÖR</span><b>${i<currentRound?"✓":i===currentRound?"›":""}</b>`;box.appendChild(d);}}
 function renderPlayers(players){const box=document.getElementById("live-players");if(!box)return;box.innerHTML="";players.forEach(p=>{const d=document.createElement("div");d.className="live-player";d.innerHTML=`<span class="avatar">${esc(p.name.charAt(0).toUpperCase())}</span><span>${esc(p.name)}</span><b>${p.score}</b>`;box.appendChild(d);});}
 
+function stopRoundTimer(){if(timerInterval){clearInterval(timerInterval);timerInterval=null;}}
+function updateRoundTimer(deadline){
+  stopRoundTimer();
+  const row=document.getElementById("timer-row"), icon=document.getElementById("timer-icon"), title=document.getElementById("timer-mode-title"), label=document.getElementById("timer-label");
+  if(gameMode==="timed") {
+    row.className="timer-row timed"; icon.textContent="⏱"; title.textContent="2 PERCES IDŐLIMIT";
+    const tick=()=>{const sec=Math.max(0,Math.ceil((Number(deadline||0)-Date.now()/1000)));const m=Math.floor(sec/60),s=String(sec%60).padStart(2,"0");label.textContent=`${m}:${s} van hátra`;if(sec<=10)row.classList.add("urgent");if(sec<=0)stopRoundTimer();};
+    tick(); timerInterval=setInterval(tick,250);
+  } else if(gameMode==="first_ready") {
+    row.className="timer-row first-ready"; icon.textContent="⚡"; title.textContent="ELSŐ KÉSZ"; label.textContent="Az első KÉSZ lezárja a kört";
+  } else {
+    row.className="timer-row no-limit"; icon.textContent="∞"; title.textContent="NINCS IDŐKORLÁT"; label.textContent="Mindenki KÉSZ-re nyom";
+  }
+}
+
 socket.on("connect",()=>{if(myName)socket.emit("join_game",{code,name:myName});else error("Előbb lépj be a lobbyban.");});
 socket.on("joined",d=>{isHost=d.is_host;});
-socket.on("state",state=>{currentState=state.state;const me=state.players.find(p=>p.name===myName);isHost=!!(me&&me.is_host);document.getElementById("player-count").textContent=state.players.length;totalRounds=Number(state.total_rounds||totalRounds);renderPlayers(state.players);if(state.state==="finished")show("finished-view");});
+socket.on("state",state=>{currentState=state.state;const me=state.players.find(p=>p.name===myName);isHost=!!(me&&me.is_host);document.getElementById("player-count").textContent=state.players.length;totalRounds=Number(state.total_rounds||totalRounds);gameMode=state.mode||gameMode;renderPlayers(state.players);if(state.state==="finished")show("finished-view");});
 
 socket.on("round_started",data=>{
-  currentState="playing";categories=data.categories;currentRound=Number(data.round);totalRounds=Number(data.total_rounds);show("playing-view");
+  currentState="playing";gameMode=data.mode||gameMode;categories=data.categories;currentRound=Number(data.round);totalRounds=Number(data.total_rounds);show("playing-view");
   document.getElementById("round-title").textContent=`${currentRound} / ${totalRounds}`;
   document.getElementById("letter").textContent=data.letter;
   document.getElementById("progress-bar").style.width=`${(currentRound/totalRounds)*100}%`;
@@ -95,13 +110,13 @@ socket.on("round_started",data=>{
   const used=document.getElementById("used-letters");used.innerHTML=`<span>KORÁBBI BETŰK</span>`+(data.used_letters||[]).map(l=>`<b>${esc(l)}</b>`).join("");
   const fields=document.getElementById("form-fields");fields.innerHTML="";
   categories.forEach(([key,label,icon])=>{const card=document.createElement("label");card.className="answer-card";card.innerHTML=`<div class="answer-icon">${icon||icons[key]}</div><div class="answer-label">${esc(label)}</div><input id="answer-${key}" autocomplete="off" maxlength="100" placeholder="${esc(data.letter)} betűvel..."></label>`;fields.appendChild(card);});
-  document.getElementById("ready-btn").disabled=false;document.getElementById("submitted").classList.add("hidden");document.getElementById("ready-dot").classList.remove("live");document.getElementById("ready-text").textContent="Még nincs leadva";
+  updateRoundTimer(data.deadline);document.getElementById("ready-btn").disabled=false;document.getElementById("submitted").classList.add("hidden");document.getElementById("ready-dot").classList.remove("live");document.getElementById("ready-text").textContent="Még nincs leadva";
 });
 
 document.getElementById("ready-btn").onclick=()=>{if(currentState!=="playing")return;const answers={};categories.forEach(([key])=>answers[key]=document.getElementById(`answer-${key}`)?.value||"");socket.emit("submit_answers",{code,answers});};
-socket.on("answers_submitted",()=>{document.getElementById("ready-btn").disabled=true;document.getElementById("submitted").classList.remove("hidden");document.getElementById("ready-dot").classList.add("live");document.getElementById("ready-text").textContent="Válaszok leadva — várj a többiekre";});
+socket.on("answers_submitted",()=>{document.getElementById("ready-btn").disabled=true;document.getElementById("submitted").classList.remove("hidden");document.getElementById("ready-dot").classList.add("live");document.getElementById("ready-text").textContent=gameMode==="first_ready"?"Kör lezárva — az első KÉSZ véget vetett a körnek":"Válaszok leadva — várj a többiekre";});
 
-socket.on("round_review",data=>{currentState="review";categories=data.categories;currentRound=Number(data.round);totalRounds=Number(data.total_rounds);isHost=!!data.is_host;show("review-view");renderRoundList("review-round-list");renderReview(data.players);document.getElementById("review-title").textContent=`${currentRound}. KÖR — ÉRTÉKELÉS`;const next=document.getElementById("next-btn");next.classList.toggle("hidden",!isHost);next.innerHTML=currentRound>=totalRounds?`VÉGEREDMÉNY <span>›</span>`:`KÖVETKEZŐ KÖR <span>›</span><small>${currentRound+1} / ${totalRounds}</small>`;});
+socket.on("round_review",data=>{stopRoundTimer();currentState="review";categories=data.categories;currentRound=Number(data.round);totalRounds=Number(data.total_rounds);isHost=!!data.is_host;show("review-view");renderRoundList("review-round-list");renderReview(data.players);document.getElementById("review-title").textContent=`${currentRound}. KÖR — ÉRTÉKELÉS`;const next=document.getElementById("next-btn");next.classList.toggle("hidden",!isHost);next.innerHTML=currentRound>=totalRounds?`VÉGEREDMÉNY <span>›</span>`:`KÖVETKEZŐ KÖR <span>›</span><small>${currentRound+1} / ${totalRounds}</small>`;});
 socket.on("review_refresh",data=>{if(currentState==="review")renderReview(data.players);});
 
 function renderReview(players){
@@ -152,7 +167,7 @@ document.getElementById("show-answers-btn").onclick=()=>error("A válaszok már 
 
 document.getElementById("copy-code").onclick=async()=>{try{await navigator.clipboard.writeText(code);error("A szobakód a vágólapra került.","info");}catch(e){error(`Szobakód: ${code}`,"info");}};
 
-socket.on("game_finished",data=>{
+socket.on("game_finished",data=>{stopRoundTimer();
   currentState="finished";
   show("finished-view");
   document.getElementById("progress-bar").style.width="100%";
