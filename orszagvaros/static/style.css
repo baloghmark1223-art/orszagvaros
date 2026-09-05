@@ -118,3 +118,17 @@
 @media(max-width:600px){
   .custom-category-add{grid-template-columns:1fr}
 }
+
+/* Játékmód választó */
+.mode-options{display:grid;gap:10px;margin-top:12px}
+.mode-option{display:block;padding:14px 16px;border:1px solid rgba(130,170,255,.18);border-radius:14px;background:rgba(10,20,40,.55);cursor:pointer;transition:.18s ease}
+.mode-option:hover{border-color:rgba(80,180,255,.5);transform:translateY(-1px)}
+.mode-option input{margin-right:10px;accent-color:#4cc9ff}
+.mode-option:has(input:checked){border-color:rgba(70,200,255,.7);box-shadow:0 0 18px rgba(40,170,255,.12);background:rgba(20,50,90,.5)}
+.mode-title{font-weight:800;display:inline-block}
+.mode-option small{display:block;margin:6px 0 0 28px;color:rgba(220,235,255,.62);line-height:1.35}
+
+.timer-row.timed{border-color:rgba(255,190,80,.35)}
+.timer-row.first-ready{border-color:rgba(90,210,255,.35)}
+.timer-row.urgent{animation:pulseTimer .65s ease-in-out infinite alternate}
+@keyframes pulseTimer{from{transform:scale(1)}to{transform:scale(1.025);box-shadow:0 0 26px rgba(255,90,70,.25)}}
