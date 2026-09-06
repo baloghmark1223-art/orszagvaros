@@ -539,6 +539,26 @@ def on_save_answer(data):
     game["answers"][sid][category] = answer
 
 
+@socketio.on("time_expired")
+def on_time_expired(data):
+    """A kliens jelzi, hogy lejárt a visszaszámláló; a szerver ellenőrzi és lezárja a kört."""
+    code = str(data.get("code", "")).strip().upper()
+    game = games.get(code)
+    if not game or game.get("state") != "playing" or game.get("mode") != "timed":
+        return
+
+    try:
+        round_number = int(data.get("round", 0))
+    except (TypeError, ValueError):
+        return
+    if round_number != game.get("round"):
+        return
+
+    deadline = game.get("deadline")
+    if deadline and time.time() >= deadline:
+        finish_round(code)
+
+
 @socketio.on("submit_answers")
 def on_submit_answers(data):
     code = str(data.get("code", "")).strip().upper()

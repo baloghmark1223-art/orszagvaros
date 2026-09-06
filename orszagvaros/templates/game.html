@@ -88,7 +88,7 @@ function updateRoundTimer(deadline){
   const row=document.getElementById("timer-row"), icon=document.getElementById("timer-icon"), title=document.getElementById("timer-mode-title"), label=document.getElementById("timer-label");
   if(gameMode==="timed") {
     row.className="timer-row timed"; icon.textContent="⏱"; title.textContent="2 PERCES IDŐLIMIT";
-    const tick=()=>{const sec=Math.max(0,Math.ceil((Number(deadline||0)-Date.now()/1000)));const m=Math.floor(sec/60),s=String(sec%60).padStart(2,"0");label.textContent=`${m}:${s} van hátra`;if(sec<=10)row.classList.add("urgent");if(sec<=0)stopRoundTimer();};
+    const tick=()=>{const sec=Math.max(0,Math.ceil((Number(deadline||0)-Date.now()/1000)));const m=Math.floor(sec/60),s=String(sec%60).padStart(2,"0");label.textContent=`${m}:${s} van hátra`;if(sec<=10)row.classList.add("urgent");if(sec<=0){stopRoundTimer();if(currentState==="playing")socket.emit("time_expired",{code,round:currentRound});}};
     tick(); timerInterval=setInterval(tick,250);
   } else if(gameMode==="first_ready") {
     row.className="timer-row first-ready"; icon.textContent="⚡"; title.textContent="ELSŐ KÉSZ"; label.textContent="Az első KÉSZ lezárja a kört";
