@@ -153,6 +153,7 @@ def send_current_view(sid, code):
             "duration": 120 if game.get("mode") == "timed" else 0,
             "deadline": game.get("deadline"),
             "categories": game["categories"],
+            "answers": game["answers"].get(sid, {}),
         }, to=sid)
         if sid in game["ready"]:
             emit("answers_submitted", {}, to=sid)
@@ -515,6 +516,27 @@ def on_start_game(data):
     game["round"] = 0
     game["used_letters"] = []
     start_round(code)
+
+
+@socketio.on("save_answer")
+def on_save_answer(data):
+    """Minden egyes gépeléskor azonnal elmenti az adott mező aktuális értékét."""
+    code = str(data.get("code", "")).strip().upper()
+    game = games.get(code)
+    sid = request.sid
+
+    if not game or game["state"] != "playing" or sid not in game["players"]:
+        return
+    if sid in game["ready"]:
+        return
+
+    category = str(data.get("category", "")).strip()
+    if category not in {key for key, _label, _icon in game["categories"]}:
+        return
+
+    answer = str(data.get("answer", "") or "")[:100]
+    game["answers"].setdefault(sid, {})
+    game["answers"][sid][category] = answer
 
 
 @socketio.on("submit_answers")
