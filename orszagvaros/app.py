@@ -129,14 +129,14 @@ def emit_review_to_room(code):
     game = games[code]
     players = review_players(game)
     for sid in game["players"]:
-        emit("round_review", {
+        socketio.emit("round_review", {
             "round": game["round"],
             "total_rounds": game["total_rounds"],
             "letter": game["letter"],
             "categories": game["categories"],
             "players": players,
             "is_host": sid == game["host"],
-        }, to=sid)
+        }, room=sid)
 
 
 def send_current_view(sid, code):
