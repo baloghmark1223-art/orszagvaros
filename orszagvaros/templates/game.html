@@ -109,7 +109,17 @@ socket.on("round_started",data=>{
   renderRoundList("round-list");
   const used=document.getElementById("used-letters");used.innerHTML=`<span>KORÁBBI BETŰK</span>`+(data.used_letters||[]).map(l=>`<b>${esc(l)}</b>`).join("");
   const fields=document.getElementById("form-fields");fields.innerHTML="";
-  categories.forEach(([key,label,icon])=>{const card=document.createElement("label");card.className="answer-card";card.innerHTML=`<div class="answer-icon">${icon||icons[key]}</div><div class="answer-label">${esc(label)}</div><input id="answer-${key}" autocomplete="off" maxlength="100" placeholder="${esc(data.letter)} betűvel..."></label>`;fields.appendChild(card);});
+  categories.forEach(([key,label,icon])=>{
+    const card=document.createElement("label");card.className="answer-card";
+    card.innerHTML=`<div class="answer-icon">${icon||icons[key]}</div><div class="answer-label">${esc(label)}</div><input id="answer-${key}" autocomplete="off" maxlength="100" placeholder="${esc(data.letter)} betűvel..."></label>`;
+    fields.appendChild(card);
+    const input=card.querySelector("input");
+    if(data.answers && Object.prototype.hasOwnProperty.call(data.answers,key)) input.value=data.answers[key]||"";
+    input.addEventListener("input",()=>{
+      if(currentState!=="playing") return;
+      socket.emit("save_answer",{code,category:key,answer:input.value});
+    });
+  });
   updateRoundTimer(data.deadline);document.getElementById("ready-btn").disabled=false;document.getElementById("submitted").classList.add("hidden");document.getElementById("ready-dot").classList.remove("live");document.getElementById("ready-text").textContent="Még nincs leadva";
 });
 
